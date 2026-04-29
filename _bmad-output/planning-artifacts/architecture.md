@@ -49,13 +49,13 @@ NFR10 (zero missing-field saves) and NFR12 (no silent mutation) are the highest-
 
 ### Technical Constraints & Dependencies
 
-- **Runtime environment:** Browser-hosted SPA, latest Chrome and Edge only (MVP)
+- **Runtime environment:** Packaged Windows desktop app (Tauri v2) using WebView2 runtime (MVP)
 - **Persistence:** SQLite local-first; no cloud database, no remote API calls for core flows
 - **Deployment model:** Local-first means no backend server is required for core functionality; any local server (if used) is a local process, not a network service
 - **Parsing strategy:** Generic baseline only in MVP; no bank-specific templates yet
 - **Categorization:** Rules + heuristics only; no ML in MVP
 - **Export encryption:** Encrypted at rest without user passphrase in MVP (means key management is a design decision)
-- **Browser matrix:** Chrome and Edge latest stable only; no Firefox, no Safari, no mobile
+- **Runtime matrix:** Windows desktop packaged runtime with WebView2; no standalone browser support and no mobile
 
 ### Cross-Cutting Concerns Identified
 

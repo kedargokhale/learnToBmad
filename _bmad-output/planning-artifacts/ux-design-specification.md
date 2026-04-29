@@ -46,7 +46,7 @@ The core experience of learnToBmad is a rapid, trustworthy message-to-ledger loo
 
 ### Platform Strategy
 
-learnToBmad is a desktop-first single-page web application optimized for keyboard and mouse interaction on latest Chrome and Edge. The product is designed as full offline-first for all primary capture, validation, correction, save, and dashboard workflows. UX behavior must remain deterministic and resilient without cloud dependency, while preserving local-first privacy boundaries.
+learnToBmad is a desktop-first single-page application deployed as a packaged Windows desktop runtime using WebView2. The product is designed as full offline-first for all primary capture, validation, correction, save, and dashboard workflows. UX behavior must remain deterministic and resilient without cloud dependency, while preserving local-first privacy boundaries.
 
 ### Effortless Interactions
 
@@ -714,33 +714,32 @@ All error states use conversational, non-technical language with actionable next
 
 **Desktop-First Approach:**
 
-learnToBmad is designed and optimized for desktop browsers (latest stable Chrome and Edge on Windows/Mac) with a minimum viewport width of 1024px. The single-page application prioritizes keyboard efficiency, multi-column layouts for simultaneous capture and insight view, and mouse-click precision for transaction correction workflows.
+learnToBmad is designed and optimized for packaged Windows desktop runtime (WebView2) with desktop and laptop viewport classes. The single-page application prioritizes keyboard efficiency, multi-column layouts for simultaneous capture and insight view, and mouse-click precision for transaction correction workflows.
 
 - **Primary layout**: Two-column design (left: TransactionInput + CorrectionPanel, right: Insight Dashboard) optimized for 1200px+ screens.
-- **Tablet layout** (768px-1023px): Single-column stacked layout. TransactionInput and CorrectionPanel remain full-width above Insight Dashboard. Modal or slide-out drawer for secondary actions.
-- **Minimum supported width**: 768px. Below 768px, critical capture and insight content remains accessible but secondary controls (settings, export, owner tools) move to hamburger menu.
+- **Minimum supported width (MVP)**: 1024px. Below 1024px is out of MVP scope.
 
 **Scaling Strategy:**
 
-- **Typography**: Base font size 16px (desktop). No font-size reduction on smaller viewports; instead, adjust line-height and letter-spacing for readability at smaller scales. Maintain minimum 14px for body text on tablets.
-- **Spacing and padding**: Use design tokens that scale proportionally. On tablets, reduce padding by ~20%; on phones, reduce by ~40% (if phones are supported in future).
-- **Form inputs**: Input fields maintain 44px minimum height on all screen sizes. On desktop, 48px for comfortable mouse interaction.
-- **Story cards on dashboard**: 3-column grid on desktop (1200px+), 2-column on tablets (768px-1199px), 1-column on smaller screens (if future support added).
+- **Typography**: Base font size 16px for desktop and laptop viewport classes.
+- **Spacing and padding**: Use design tokens tuned for desktop information density while preserving readability and focus clarity.
+- **Form inputs**: Input fields maintain 48px target height for comfortable mouse interaction.
+- **Story cards on dashboard**: 3-column grid on 1200px+ and 2-column grid on 1024px-1199px.
 
 **Breakpoint Strategy:**
 
 - **1200px+**: Two-column layout, 3-column insight grid, full-width controls.
-- **768px-1199px**: Single-column stacked, 2-column grid or single-column insight cards, hamburger menu for secondary actions.
-- **< 768px**: Not currently supported; document as future scope.
+- **1024px-1199px**: Two-column layout, 2-column insight grid.
+- **< 1024px**: Out of MVP scope; define post-MVP responsive strategy separately.
 
 **Keyboard Navigation Persistence:**
 
 - Keyboard navigation sequences remain identical across all breakpoints.
-- Tab order follows DOM order (left column → right column on desktop; stacked column order on tablet).
+- Tab order follows DOM order (left column -> right column across supported MVP desktop breakpoints).
 
 ---
 
-**Validation**: Responsive strategy honors desktop-first platform choice while documenting tablet scaling approach. Two-column layout at primary breakpoint maximizes efficiency for paste-and-save capture workflow paired with immediate insight refresh on right side.
+**Validation**: Responsive strategy honors desktop-only MVP scope for packaged Windows runtime (WebView2). Two-column layout at primary breakpoint maximizes efficiency for paste-and-save capture workflow paired with immediate insight refresh on right side.
 
 ## Workflow Completion & Implementation Readiness
 
@@ -772,7 +771,7 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 
 11. **UX Consistency Patterns** (Step 12): Validation feedback uses progressive disclosure (show only what's needed at each stage). Button text minimal and outcome-focused. Error messages friendly and specific with example formats. Form interactions keyboard-friendly with real-time validation feedback. Navigation keyboard-first with visible focus. Success confirmation brief and non-intrusive. Empty states guide next action.
 
-12. **Responsive Design Strategy** (Step 13): Desktop-first two-column layout optimized for 1200px+. Tablet layout (768px-1199px) single-column stacked. Breakpoint strategy documented. Keyboard navigation and tab order consistent across all viewports.
+12. **Responsive Design Strategy** (Step 13): Desktop-first two-column layout optimized for 1200px+, with 1024px as MVP minimum width. Breakpoint strategy documented for supported desktop/laptop classes, and keyboard navigation is consistent across supported MVP breakpoints.
 
 ### Internal Consistency Verification
 
@@ -784,8 +783,8 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 - ✅ **Pattern operationalization**: D2+D5 design direction operationalized through two-column layout, story cards, and narrative-driven insights. No misalignment between design direction and component strategy.
 - ✅ **Component behavior mapping**: Seven custom components map 1:1 to user journeys. Each component has defined role, state transitions, and keyboard interaction.
 - ✅ **Journey coverage**: All three critical journeys (Journey 1-3) have defined patterns, flows, and component touchpoints. No journey left unspecified.
-- ✅ **Accessibility intent documented**: While WCAG 2.1 AA baseline deferred, semantic HTML and keyboard-first navigation patterns establish foundation for future accessibility compliance.
-- ✅ **Platform consistency**: Desktop-first responsive strategy aligns with chosen platform (latest Chrome/Edge, 1200px+ primary). Tablet scaling approach documented without over-specifying mobile (deferred).
+- ✅ **Accessibility intent documented**: WCAG 2.1 AA-informed baseline coverage is targeted for core MVP flows on a best-effort basis, while formal compliance sign-off is deferred.
+- ✅ **Platform consistency**: Desktop-only MVP strategy aligns with packaged Windows runtime target (WebView2) and 1200px+ primary layout.
 
 ### Design Specification Completeness Checklist
 
@@ -798,8 +797,8 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 - ✅ **Visual direction locked**: D2+D5 blend (two-column layout + story cards). No ambiguity on design intention.
 - ✅ **Components clearly specified**: 7 custom components with behavior, state transitions, and UI placement documented.
 - ✅ **User journeys mapped**: 3 critical paths defined with Mermaid diagrams showing decision points, state transitions, and outcomes.
-- ✅ **Responsive strategy documented**: Desktop-first two-column at 1200px+, single-column stacked on tablets 768px-1199px. Keyboard navigation consistent across breakpoints.
-- ✅ **Technical constraints acknowledged**: Offline-first, local SQLite, no cloud dependency, desktop browser only (latest Chrome/Edge).
+- ✅ **Responsive strategy documented**: Desktop-first two-column at 1200px+, with 1024px minimum width for MVP. Keyboard navigation consistent across supported breakpoints.
+- ✅ **Technical constraints acknowledged**: Offline-first, local SQLite, no cloud dependency, packaged Windows desktop runtime on WebView2.
 
 ### Implementation Readiness Gate
 
@@ -827,13 +826,14 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 - **Design tokens and styling**: Use Visual Design Foundation (Section 8) and Design System Foundation (Section 6) to guide token definition and CSS architecture.
 - **User journey validation**: Use Section 10 (User Journey Flows) to validate each critical path (capture, correction, maintenance) is implemented end-to-end.
 - **Pattern compliance**: Use UX Consistency Patterns (Section 12) to verify button text, error message tone, keyboard navigation, and state transitions match specification.
-- **Responsive testing**: Use Section 13 (Responsive Design Strategy) to validate layout behavior at 1200px+ (primary), 768px-1199px (tablet), and keyboard navigation consistency across breakpoints.
+- **Responsive testing**: Use Section 13 (Responsive Design Strategy) to validate layout behavior at 1200px+ (primary), 1024px-1199px (secondary desktop), and keyboard navigation consistency across supported MVP breakpoints.
 - **QA test case generation**: Use Journey Flows (Section 10) and Consistency Patterns (Section 12) as basis for acceptance test cases. All three journeys must be completable end-to-end.
 
 **What is NOT in this spec (scope deferred):**
 
-- Accessibility compliance (WCAG 2.1 AA) — deferred for future phase
-- Mobile platform (< 768px) — documented as future scope, not in v1
+- Formal accessibility compliance sign-off (WCAG 2.1 AA) — deferred for future phase
+- Tablet and mobile platform (< 1024px) — documented as post-MVP scope
+- Standalone browser runtime support — deferred, not in MVP
 - Advanced features (export, import, sharing, cloud sync) — out of scope, focus on core capture + dashboard
 - Styling implementation details (CSS architecture, build tooling, theme switching) — design tokens needed, implementation details to engineering
 - Backend integration details (API contracts, validation rules, data persistence) — architecture defined separately, this spec focuses on frontend UX
