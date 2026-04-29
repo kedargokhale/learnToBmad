@@ -217,12 +217,11 @@ This product is a desktop-first single-page web application focused on private, 
 - The implementation should prioritize deterministic state transitions for parse, validate, save, and refresh workflows to avoid ledger ambiguity.
 - The app should remain local-first by default, with no mandatory cloud dependency for core functionality.
 
-### Browser Matrix
+### Desktop Runtime Matrix
 
-- Supported browsers for MVP:
-  - Latest stable Google Chrome
-  - Latest stable Microsoft Edge
-- Older browser versions are not in MVP support scope.
+- Supported runtime for MVP:
+  - Packaged Windows desktop app (MSI/EXE) using Microsoft WebView2 runtime
+- Standalone browser support is out of MVP scope.
 
 ### Responsive Design
 
@@ -247,7 +246,7 @@ This product is a desktop-first single-page web application focused on private, 
 
 ### Accessibility Level
 
-- MVP target is WCAG 2.1 AA baseline for core user flows.
+- MVP target is WCAG 2.1 AA-informed baseline coverage for core user flows, delivered on a best-effort basis.
 - Required accessibility coverage includes:
   - Keyboard navigation for capture, validation, save, and dashboard controls
   - Visible focus states
@@ -259,7 +258,7 @@ This product is a desktop-first single-page web application focused on private, 
 
 - Live-update behavior must not bypass validation or create race conditions in transaction state.
 - Accessibility compliance should be built into component patterns early to avoid late retrofit cost.
-- Browser compatibility testing should focus on core flows first: paste, parse, block-save, correction, save, and dashboard refresh.
+- Desktop runtime compatibility testing should focus on core flows first: paste, parse, block-save, correction, save, and dashboard refresh.
 - Real-time and local-first constraints should be implemented in ways that preserve the privacy posture and data integrity guarantees already defined in prior sections.
 
 ## Project Scoping
@@ -325,10 +324,10 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
   - Import validation and integrity checking before commit
   - Duplicate conflict handling with two modes: auto-skip or manual review per transaction
 
-- **Accessibility & Browser Support:**
+- **Accessibility & Desktop Runtime Support:**
   - Keyboard navigation for all core flows (paste, validate, save, dashboard)
-  - WCAG 2.1 AA baseline compliance
-  - Support for latest stable Chrome and Edge only
+  - WCAG 2.1 AA-informed baseline coverage (best-effort in MVP; formal compliance sign-off deferred)
+  - Support for packaged Windows desktop runtime with WebView2
 
 **Nice-to-Have Capabilities (Explicitly Deferred):**
 
@@ -338,7 +337,7 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 - Mobile-responsive design (desktop-only for MVP)
 - Cloud sync or multi-device sync
 - Advanced ML-driven categorization
-- Firefox and Safari support (Chrome and Edge only for MVP)
+- Standalone browser support (Chrome, Edge, Firefox, Safari)
 
 ### Resource Requirements
 
@@ -346,7 +345,7 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 
 - **Backend/Parser:** 1 engineer (transaction extraction, validation logic, SQLite schema)
 - **Frontend/UI:** 1 engineer (SPA implementation, dashboard, forms, real-time updates)
-- **QA/Testing:** 0.5 engineer (critical-path testing, accessibility validation, browser compatibility)
+- **QA/Testing:** 0.5 engineer (critical-path testing, accessibility validation, desktop runtime compatibility)
 - **Product/Design:** 0.5 (guidance, UX review, scope policing)
 
 **Timeline Estimate:** 8-12 weeks for complete single-release delivery, depending on team experience with local-first architectures.
@@ -377,8 +376,8 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 - **Risk:** Parser or categorization engine proves more complex than estimated.
   **Mitigation:** Scope to generic baseline; bank-specific templates deferred. Use heuristic-only learning on Day 1; improve incrementally.
 
-- **Risk:** Accessibility or browser compatibility requires unexpected rework.
-  **Mitigation:** Build accessibility into component patterns from day 1. Test on target browsers (Chrome, Edge) early and continuously.
+- **Risk:** Accessibility or desktop runtime compatibility requires unexpected rework.
+  **Mitigation:** Build accessibility into component patterns from day 1. Test on target packaged Windows runtime environments with WebView2 early and continuously.
 
 ## Functional Requirements
 
@@ -437,7 +436,7 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 - FR33: System maintains sufficient color contrast for text and key indicators aligned to WCAG 2.1 AA baseline.
 - FR34: System provides semantic labels and error messaging compatible with assistive technologies.
 - FR35: System uses clear heading and landmark structure for predictable navigation.
-- FR36: System interface works correctly on latest stable Chrome and Edge.
+- FR36: System interface works correctly in the packaged Windows desktop runtime using WebView2.
 
 ### Privacy & Local-First Data Handling
 
@@ -481,4 +480,4 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 
 - NFR18: Core flows should support keyboard navigation and visible focus states where technically feasible in MVP.
 - NFR19: UI text and error states should maintain readable contrast and clear labeling where technically feasible in MVP.
-- NFR20: Accessibility conformance testing is best-effort in MVP and formal WCAG 2.1 AA compliance is deferred.
+- NFR20: Accessibility conformance testing is best-effort in MVP and formal WCAG 2.1 AA compliance sign-off is deferred.
