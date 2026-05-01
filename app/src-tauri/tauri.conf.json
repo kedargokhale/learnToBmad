@@ -9,6 +9,13 @@
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "sql": {
+      "preload": [
+        "sqlite:ledger.db"
+      ]
+    }
+  },
   "app": {
     "windows": [
       {
