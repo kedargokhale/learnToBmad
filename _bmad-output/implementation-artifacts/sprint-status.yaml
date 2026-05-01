@@ -1,0 +1,84 @@
+# generated: 2026-04-30T18:14:54.3349761+05:30
+# last_updated: 2026-04-30T18:45:28.8852718+05:30
+# project: learnToBmad
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-04-30T18:14:54.3349761+05:30
+last_updated: 2026-05-01T11:14:36.4600043+05:30
+project: learnToBmad
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: in-progress
+  1-1-set-up-initial-project-from-starter-template: done
+  1-2-create-account-and-opening-balance-setup: ready-for-dev
+  1-3-view-account-ledger-baseline: backlog
+  1-4-enforce-local-storage-and-desktop-runtime-guardrails: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-paste-to-parse-transaction-capture: backlog
+  2-2-critical-field-validation-gate-before-save: backlog
+  2-3-guided-correction-and-retry-flow: backlog
+  2-4-account-mismatch-resolution-and-duplicate-flagging: backlog
+  2-5-deterministic-save-state-machine-and-audit-trail: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-day-1-category-taxonomy-and-suggested-categorization: backlog
+  3-2-learning-from-category-corrections: backlog
+  3-3-category-and-merchant-insight-cards: backlog
+  3-4-trend-alerts-and-running-balance-visualization: backlog
+  3-5-capture-surface-and-readiness-state-components: backlog
+  3-6-correction-and-confidence-guidance-components: backlog
+  3-7-insight-summary-story-components: backlog
+  3-8-progressive-disclosure-and-confirmation-feedback: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-deterministic-versioned-export-generation: backlog
+  4-2-encrypted-export-at-rest: backlog
+  4-3-validate-first-atomic-import: backlog
+  4-4-duplicate-conflict-resolution-modes: backlog
+  4-5-user-controlled-export-import-surfaces: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-keyboard-only-core-flow-completion: backlog
+  5-2-visible-focus-and-non-color-state-communication: backlog
+  5-3-semantic-labels-errors-and-landmarks: backlog
+  5-4-accessibility-and-compatibility-verification-baseline: backlog
+  epic-5-retrospective: optional
