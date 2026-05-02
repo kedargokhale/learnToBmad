@@ -14,6 +14,26 @@ export type CreateAccountData = {
   openingEntryId: number;
 };
 
+export type LedgerEntryData = {
+  id: number;
+  entryKind: string;
+  amountMinor: number;
+  createdAt: string;
+};
+
+export type LedgerAccountData = {
+  id: number;
+  bankName: string;
+  accountNumber: string;
+  currentBalanceMinor: number;
+};
+
+export type LedgerBaselineData = {
+  account: LedgerAccountData | null;
+  entries: LedgerEntryData[];
+  ordering: string;
+};
+
 export type CommandError = {
   code: string;
   message: string;
@@ -39,4 +59,8 @@ export async function createLedgerAccount(
   return invoke<CommandEnvelope<CreateAccountData>>("create_account", {
     payload,
   });
+}
+
+export async function getLedgerBaseline(): Promise<CommandEnvelope<LedgerBaselineData>> {
+  return invoke<CommandEnvelope<LedgerBaselineData>>("get_ledger_baseline");
 }

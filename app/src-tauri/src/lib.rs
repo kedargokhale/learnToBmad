@@ -10,7 +10,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(sql_plugin)
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::ledger::create_account])
+        .invoke_handler(tauri::generate_handler![
+            commands::ledger::create_account,
+            commands::ledger::get_ledger_baseline
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

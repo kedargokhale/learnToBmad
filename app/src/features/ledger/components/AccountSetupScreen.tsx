@@ -21,10 +21,12 @@ type AccountSetupScreenProps = {
       openingBalanceMinor: number;
     },
   ) => Promise<CommandEnvelope<CreateAccountData>>;
+  onAccountCreated?: (created: CreateAccountData) => void | Promise<void>;
 };
 
 export function AccountSetupScreen({
   submitAccount = createLedgerAccount,
+  onAccountCreated,
 }: AccountSetupScreenProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [serverHint, setServerHint] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export function AccountSetupScreen({
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
     watch,
   } = useForm<AccountSetupFormValues>({
@@ -83,6 +86,7 @@ export function AccountSetupScreen({
 
     setSuccessState(result.data);
     reset({ bankName: "", accountNumber: "", openingBalance: "" });
+    await onAccountCreated?.(result.data);
   });
 
   return (
