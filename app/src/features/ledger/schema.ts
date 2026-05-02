@@ -18,6 +18,28 @@ export const accountSetupSchema = z.object({
 
 export type AccountSetupFormValues = z.infer<typeof accountSetupSchema>;
 
+export const ledgerEntrySchema = z.object({
+  id: z.number().int().nonnegative(),
+  entryKind: z.string().min(1),
+  amountMinor: z.number().int().nonnegative(),
+  createdAt: z.string().min(1),
+});
+
+export const ledgerAccountSchema = z.object({
+  id: z.number().int().nonnegative(),
+  bankName: z.string().min(1),
+  accountNumber: z.string().min(1),
+  currentBalanceMinor: z.number().int().nonnegative(),
+});
+
+export const ledgerBaselineSchema = z.object({
+  account: ledgerAccountSchema.nullable(),
+  entries: z.array(ledgerEntrySchema),
+  ordering: z.string().min(1),
+});
+
+export type LedgerBaselineViewModel = z.infer<typeof ledgerBaselineSchema>;
+
 export function parseCurrencyToMinorUnits(value: string): number {
   const normalized = value.trim();
 

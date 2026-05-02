@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Row, Sqlite};
 use tauri::AppHandle;
 
 use crate::db::ledger;
@@ -21,6 +21,32 @@ pub struct CreateAccountResponse {
     pub account_number: String,
     pub opening_balance_minor: i64,
     pub opening_entry_id: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerEntrySummary {
+    pub id: i64,
+    pub entry_kind: String,
+    pub amount_minor: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerAccountSummary {
+    pub id: i64,
+    pub bank_name: String,
+    pub account_number: String,
+    pub current_balance_minor: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerBaselineResponse {
+    pub account: Option<LedgerAccountSummary>,
+    pub entries: Vec<LedgerEntrySummary>,
+    pub ordering: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -225,7 +251,7 @@ fn is_unique_violation(error: &sqlx::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_account_with_pool, CreateAccountRequest};
+    use super::{create_account_with_pool, get_ledger_baseline_with_pool, CreateAccountRequest};
     use sqlx::{sqlite::SqlitePoolOptions, Row};
 
     async fn setup_pool() -> sqlx::Pool<sqlx::Sqlite> {
@@ -298,4 +324,184 @@ mod tests {
 
         assert_eq!(duplicate_error.code, "ACCOUNT_ALREADY_EXISTS");
     }
+
+    #[tokio::test]
+    async fn reads_ledger_baseline_after_account_creation() {
+        let pool = setup_pool().await;
+
+        let created = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "Axis".to_string(),
+                account_number: "1010".to_string(),
+                opening_balance_minor: 7000,
+            },
+        )
+        .await
+        .expect("account creation should succeed");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        let account = baseline.account.expect("account should be present");
+        assert_eq!(account.id, created.account_id);
+        assert_eq!(account.bank_name, "Axis");
+        assert_eq!(account.account_number, "1010");
+        assert_eq!(account.current_balance_minor, 7000);
+        assert_eq!(baseline.entries.len(), 1);
+        assert_eq!(baseline.entries[0].entry_kind, "opening_balance");
+        assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn returns_explicit_empty_state_when_no_account_exists() {
+        let pool = setup_pool().await;
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert!(baseline.account.is_none());
+        assert!(baseline.entries.is_empty());
+        assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn orders_entries_deterministically_by_created_at_then_id_desc() {
+        let pool = setup_pool().await;
+
+        let created = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "SBI".to_string(),
+                account_number: "2020".to_string(),
+                opening_balance_minor: 100,
+            },
+        )
+        .await
+        .expect("account creation should succeed");
+
+        sqlx::query("DROP INDEX idx_ledger_entries_account_entry_kind")
+            .execute(&pool)
+            .await
+            .expect("unique index should be droppable for ordering test setup");
+
+        sqlx::query(
+            "INSERT INTO ledger_entries (account_id, entry_kind, amount_minor, created_at) VALUES ($1, 'opening_balance', 200, '2026-01-01 12:00:00')",
+        )
+        .bind(created.account_id)
+        .execute(&pool)
+        .await
+        .expect("second entry should insert");
+
+        sqlx::query(
+            "INSERT INTO ledger_entries (account_id, entry_kind, amount_minor, created_at) VALUES ($1, 'opening_balance', 300, '2026-01-01 12:00:00')",
+        )
+        .bind(created.account_id)
+        .execute(&pool)
+        .await
+        .expect("third entry should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.entries.len(), 3);
+
+        for window in baseline.entries.windows(2) {
+            let left = &window[0];
+            let right = &window[1];
+
+            assert!(
+                left.created_at > right.created_at
+                    || (left.created_at == right.created_at && left.id > right.id)
+            );
+        }
+
+        let tied_entries: Vec<_> = baseline
+            .entries
+            .iter()
+            .filter(|entry| entry.created_at == "2026-01-01 12:00:00")
+            .collect();
+
+        assert_eq!(tied_entries.len(), 2);
+        assert!(tied_entries[0].id > tied_entries[1].id);
+    }
+}
+
+#[tauri::command]
+pub async fn get_ledger_baseline(app: AppHandle) -> CommandEnvelope<LedgerBaselineResponse> {
+    match ledger::sqlite_pool(&app).await {
+        Ok(pool) => match get_ledger_baseline_with_pool(&pool).await {
+            Ok(baseline) => CommandEnvelope {
+                ok: true,
+                data: Some(baseline),
+                error: None,
+            },
+            Err(error) => error.into_envelope(),
+        },
+        Err(error) => CommandError::persistence(error).into_envelope(),
+    }
+}
+
+async fn get_ledger_baseline_with_pool(
+    pool: &Pool<Sqlite>,
+) -> Result<LedgerBaselineResponse, CommandError> {
+    let account_row = sqlx::query(
+        "SELECT id, bank_name, account_number FROM accounts ORDER BY id ASC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let Some(account_row) = account_row else {
+        return Ok(LedgerBaselineResponse {
+            account: None,
+            entries: Vec::new(),
+            ordering: "created_at_desc_id_desc",
+        });
+    };
+
+    let account_id = account_row.get::<i64, _>("id");
+    let bank_name = account_row.get::<String, _>("bank_name");
+    let account_number = account_row.get::<String, _>("account_number");
+
+    let current_balance_minor = sqlx::query(
+        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM ledger_entries WHERE account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?
+    .get::<i64, _>("current_balance_minor");
+
+    let entry_rows = sqlx::query(
+        "SELECT id, entry_kind, amount_minor, created_at FROM ledger_entries WHERE account_id = $1 ORDER BY created_at DESC, id DESC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let entries = entry_rows
+        .into_iter()
+        .map(|row| LedgerEntrySummary {
+            id: row.get::<i64, _>("id"),
+            entry_kind: row.get::<String, _>("entry_kind"),
+            amount_minor: row.get::<i64, _>("amount_minor"),
+            created_at: row.get::<String, _>("created_at"),
+        })
+        .collect();
+
+    Ok(LedgerBaselineResponse {
+        account: Some(LedgerAccountSummary {
+            id: account_id,
+            bank_name,
+            account_number,
+            current_balance_minor,
+        }),
+        entries,
+        ordering: "created_at_desc_id_desc",
+    })
 }
