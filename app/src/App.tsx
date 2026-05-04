@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
 import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineView";
@@ -8,7 +9,25 @@ import {
 } from "./features/ledger/service";
 import "./App.css";
 
+function UnsupportedRuntimeScreen() {
+  return (
+    <main className="app-shell">
+      <section role="alert" className="loading-card">
+        <h1>Desktop app required</h1>
+        <p>
+          learnToBmad must run as a packaged desktop application. Open the
+          installed app instead of this file directly in a browser.
+        </p>
+      </section>
+    </main>
+  );
+}
+
 function App() {
+  if (!isTauri()) {
+    return <UnsupportedRuntimeScreen />;
+  }
+
   const [baseline, setBaseline] = useState<LedgerBaselineData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 

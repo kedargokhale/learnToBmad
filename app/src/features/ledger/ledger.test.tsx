@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { isTauri } from "@tauri-apps/api/core";
 
 import App from "../../App";
 import { AccountSetupScreen } from "./components/AccountSetupScreen";
@@ -201,5 +202,33 @@ describe("Ledger baseline app flow", () => {
     await user.click(screen.getByRole("button", { name: /create account and opening balance/i }));
 
     expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+  });
+});
+
+describe("Desktop runtime guard", () => {
+  it("renders unsupported runtime screen when not running in Tauri", async () => {
+    vi.mocked(getLedgerBaseline).mockClear();
+    vi.mocked(isTauri).mockReturnValueOnce(false);
+
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/desktop app required/i);
+    expect(getLedgerBaseline).not.toHaveBeenCalled();
+  });
+
+  it("proceeds with normal baseline load when running in Tauri", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: null,
+        entries: [],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
   });
 });
