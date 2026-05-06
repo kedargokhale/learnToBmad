@@ -31,6 +31,52 @@ function CaptureHarness({
 }
 
 describe("Capture parse UX", () => {
+  it("keeps legacy baseline readiness states stable for manually tested envelopes", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+          normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+          amountMinor: 125050,
+          direction: "debit",
+          transactionDate: "2026-05-01",
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          merchantOrPayee: "BigBazaar",
+          readinessState: "ready",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          rawText: "Salary Credited! INR 5,00,000.00 to HDFC Bank A/c XX9410 Bal: INR 2,62,501.16",
+          normalizedText: "Salary Credited! INR 5,00,000.00 to HDFC Bank A/c XX9410 Bal: INR 2,62,501.16",
+          amountMinor: 50000000,
+          direction: "credit",
+          transactionDate: null,
+          bankName: "HDFC Bank",
+          accountNumber: "XX9410",
+          merchantOrPayee: null,
+          readinessState: "needs-review",
+        },
+      });
+
+    render(<CaptureHarness parseMessage={parseMessage} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+    expect(await screen.findByText(/state: ready for validation/i)).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/bank message/i));
+    await user.paste("Salary Credited! INR 5,00,000.00 to HDFC Bank A/c XX9410 Bal: INR 2,62,501.16");
+    expect(await screen.findByText(/state: needs review before save/i)).toBeInTheDocument();
+
+    expect(parseMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("shows parse-ready feedback for a supported message", async () => {
     const user = userEvent.setup();
     const parseMessage = vi.fn().mockResolvedValue({
