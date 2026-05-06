@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
+import { ReadinessStatus } from "./features/capture/components/ReadinessStatus";
+import { TransactionInput } from "./features/capture/components/TransactionInput";
+import type { CommandError, ParsePreviewData } from "./features/capture/service";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
 import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineView";
 import {
@@ -30,6 +33,8 @@ function App() {
 
   const [baseline, setBaseline] = useState<LedgerBaselineData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [parsePreview, setParsePreview] = useState<ParsePreviewData | null>(null);
+  const [parseError, setParseError] = useState<CommandError | null>(null);
 
   const loadBaseline = useCallback(async () => {
     setIsLoading(true);
@@ -72,9 +77,20 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell app-shell--stacked">
       {baseline?.account ? (
-        <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
+        <>
+          <section className="capture-grid" aria-label="Transaction capture parse preview">
+            <TransactionInput
+              onPreviewChange={(preview, error) => {
+                setParsePreview(preview);
+                setParseError(error);
+              }}
+            />
+            <ReadinessStatus preview={parsePreview} error={parseError} />
+          </section>
+          <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
+        </>
       ) : (
         <AccountSetupScreen onAccountCreated={loadBaseline} />
       )}
