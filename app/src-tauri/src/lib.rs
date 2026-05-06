@@ -12,7 +12,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::ledger::create_account,
-            commands::ledger::get_ledger_baseline
+            commands::ledger::get_ledger_baseline,
+            commands::capture::parse_transaction_message
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

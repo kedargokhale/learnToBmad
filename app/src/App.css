@@ -330,8 +330,54 @@ input {
   padding: 12px 14px;
 }
 
+.app-shell--stacked {
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.capture-grid {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.capture-card {
+  width: 100%;
+}
+
+.capture-textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(20, 33, 61, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  color: #14213d;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.capture-textarea:focus {
+  border-color: #386ef5;
+  box-shadow: 0 0 0 4px rgba(56, 110, 245, 0.15);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.capture-field-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
 @media (max-width: 860px) {
-  .ledger-screen {
+  .ledger-screen,
+  .capture-grid {
     grid-template-columns: 1fr;
   }
 

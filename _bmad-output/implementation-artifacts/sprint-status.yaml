@@ -1,5 +1,5 @@
 # generated: 2026-04-30T18:14:54.3349761+05:30
-# last_updated: 2026-05-04T00:00:00+05:30
+# last_updated: 2026-05-06T14:10:00+05:30
 # project: learnToBmad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,22 +35,22 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-04T16:43:12.1582208+05:30
+last_updated: 2026-05-06T12:45:00+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-set-up-initial-project-from-starter-template: done
   1-2-create-account-and-opening-balance-setup: done
   1-3-view-account-ledger-baseline: done
   1-4-enforce-local-storage-and-desktop-runtime-guardrails: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: skipped
 
-  epic-2: backlog
-  2-1-paste-to-parse-transaction-capture: backlog
+  epic-2: in-progress
+  2-1-paste-to-parse-transaction-capture: done
   2-2-critical-field-validation-gate-before-save: backlog
   2-3-guided-correction-and-retry-flow: backlog
   2-4-account-mismatch-resolution-and-duplicate-flagging: backlog
