@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-11T13:26:00+05:30
+last_updated: 2026-05-11T14:13:00+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
@@ -51,7 +51,7 @@ development_status:
 
   epic-2: in-progress
   2-1-paste-to-parse-transaction-capture: done
-  2-2-critical-field-validation-gate-before-save: review
+  2-2-critical-field-validation-gate-before-save: done
   2-3-guided-correction-and-retry-flow: backlog
   2-4-account-mismatch-resolution-and-duplicate-flagging: backlog
   2-5-deterministic-save-state-machine-and-audit-trail: backlog

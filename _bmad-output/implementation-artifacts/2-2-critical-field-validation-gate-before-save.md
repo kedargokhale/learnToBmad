@@ -3,7 +3,7 @@
 ## Metadata
 - Story Key: 2-2-critical-field-validation-gate-before-save
 - Epic: Epic 2 - Capture Transactions with Safe Validation and Corrections
-- Status: review
+- Status: done
 - Created: 2026-05-11T13:00:51+05:30
 - Last Updated: 2026-05-11T13:25:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
@@ -38,6 +38,11 @@ So that incomplete transactions never enter my ledger.
   - [x] Rust tests for valid-input gate pass response that is deterministic and does not mutate ledger tables in this story scope.
   - [x] Frontend tests for blocked-save reason visibility and unchanged ledger view after failed save attempt.
   - [x] Preserve and rerun Story 1.x and Story 2.1 suites.
+
+### Review Findings
+- [x] [Review][Patch] Add transactionDate format ambiguity check to frontend blocked-reason derivation [app/src/features/capture/schema.ts:115]
+- [x] [Review][Patch] Align deterministic readiness fixture with backend date contract (YYYY-MM-DD) [app/src/features/capture/capture.test.tsx:186]
+- [x] [Review][Patch] Avoid substring-based ambiguous text false positives for valid merchant/bank/account names [app/src-tauri/src/commands/capture.rs:316]
 
 ## Dev Notes
 
@@ -255,6 +260,24 @@ GPT-5.3-Codex
 - app/src/features/capture/capture.test.tsx
 - app/src/App.tsx
 - _bmad-output/implementation-artifacts/2-2-critical-field-validation-gate-before-save.md
+
+## Appended: Last Commit Changes (2026-05-11)
+
+- Commit: `e06ebecab8a72a58c0ef6f48a382e89aeb03cb93`
+- Title: `feat: implement story 2.2 critical-field save validation gate`
+- Branch: `Sprint_2-2_critical-field-validation`
+
+### Files Changed
+- Added: `_bmad-output/implementation-artifacts/2-2-critical-field-validation-gate-before-save.md`
+- Modified: `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- Modified: `app/src-tauri/src/commands/capture.rs`
+- Modified: `app/src-tauri/src/lib.rs`
+- Modified: `app/src/App.tsx`
+- Modified: `app/src/features/capture/capture.test.tsx`
+- Modified: `app/src/features/capture/components/ReadinessStatus.tsx`
+- Modified: `app/src/features/capture/components/TransactionInput.tsx`
+- Modified: `app/src/features/capture/schema.ts`
+- Modified: `app/src/features/capture/service.ts`
 
 ## Change Log
 - 2026-05-11: Implemented Story 2.2 save-attempt validation gate and capture UX blocked-save guidance; added deterministic no-mutation tests in frontend and Rust suites.

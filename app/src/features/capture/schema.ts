@@ -77,6 +77,10 @@ function isAmbiguousText(value: string): boolean {
   return exactAmbiguous.has(lowered) || lowered.includes("unknown") || lowered.includes("ambiguous");
 }
 
+function isYyyyMmDd(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 export function deriveBlockedFieldReasons(
   preview: ParsePreviewViewModel | null,
 ): BlockedFieldReason[] {
@@ -117,6 +121,12 @@ export function deriveBlockedFieldReasons(
       field: "transactionDate",
       reason: "missing",
       hint: "Provide transaction date in YYYY-MM-DD.",
+    });
+  } else if (!isYyyyMmDd(preview.transactionDate)) {
+    blocked.push({
+      field: "transactionDate",
+      reason: "ambiguous",
+      hint: "Use an unambiguous date in YYYY-MM-DD format.",
     });
   }
 

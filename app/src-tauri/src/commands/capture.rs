@@ -312,9 +312,13 @@ fn is_ambiguous_text(value: &str) -> bool {
     }
 
     let exact = ["unknown", "ambiguous", "n/a", "na", "tbd", "-", "--"];
-    exact.contains(&lowered.as_str())
-        || lowered.contains("unknown")
-        || lowered.contains("ambiguous")
+    if exact.contains(&lowered.as_str()) {
+        return true;
+    }
+
+    lowered
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .any(|token| matches!(token, "unknown" | "ambiguous"))
 }
 
 fn persistence_error_envelope<T>(message: String) -> CommandEnvelope<T>

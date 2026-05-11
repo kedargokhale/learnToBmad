@@ -183,7 +183,7 @@ describe("Capture parse UX", () => {
         normalizedText: "ICICI Bank Msg: INR 5000 credited to account 9988 on 01/05/2026 from ACME PAYROLL.",
         amountMinor: 500000,
         direction: "credit",
-        transactionDate: "01/05/2026",
+        transactionDate: "2026-05-01",
         bankName: "ICICI Bank",
         accountNumber: "9988",
         merchantOrPayee: "ACME PAYROLL",
