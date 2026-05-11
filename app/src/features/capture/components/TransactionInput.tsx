@@ -10,11 +10,17 @@ import {
 type TransactionInputProps = {
   parseMessage?: (payload: { message: string }) => Promise<ParsePreviewEnvelope>;
   onPreviewChange?: (preview: ParsePreviewData | null, error: CommandError | null) => void;
+  onAttemptSave?: () => Promise<void>;
+  saveBlockedReasons?: string[];
+  isSaving?: boolean;
 };
 
 export function TransactionInput({
   parseMessage = parseTransactionMessage,
   onPreviewChange,
+  onAttemptSave,
+  saveBlockedReasons = [],
+  isSaving = false,
 }: TransactionInputProps) {
   const [message, setMessage] = useState("");
   const [isParsing, setIsParsing] = useState(false);
@@ -112,8 +118,36 @@ export function TransactionInput({
         >
           {isParsing ? "Parsing message..." : "Parse message"}
         </button>
+        <button
+          className="secondary-action"
+          type="button"
+          disabled={isSaving || saveBlockedReasons.length > 0}
+          aria-disabled={isSaving || saveBlockedReasons.length > 0}
+          onClick={() => {
+            if (!onAttemptSave || saveBlockedReasons.length > 0 || isSaving) {
+              return;
+            }
+
+            void onAttemptSave();
+          }}
+        >
+          {isSaving ? "Validating save..." : "Save transaction"}
+        </button>
         <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data.</div>
       </div>
+
+      {saveBlockedReasons.length > 0 ? (
+        <div className="blocked-reasons" role="status" aria-live="polite">
+          <strong>Save blocked until all critical fields are valid.</strong>
+          <ul>
+            {saveBlockedReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="hint">Save validation gate is available. Use Save transaction to run a deterministic validation check.</div>
+      )}
     </section>
   );
 }

@@ -1,17 +1,30 @@
 import {
+  blockedFieldReasonSchema,
   computeReadinessLabel,
+  getFieldDisplayName,
   formatCurrency,
   parsePreviewSchema,
   type ParsePreviewViewModel,
 } from "../schema";
-import type { CommandError, ParsePreviewData } from "../service";
+import type {
+  CommandError,
+  ParsePreviewData,
+  SaveTransactionAttemptData,
+} from "../service";
 
 type ReadinessStatusProps = {
   preview: ParsePreviewData | null;
   error: CommandError | null;
+  saveError: CommandError | null;
+  saveResult: SaveTransactionAttemptData | null;
 };
 
-export function ReadinessStatus({ preview, error }: ReadinessStatusProps) {
+export function ReadinessStatus({
+  preview,
+  error,
+  saveError,
+  saveResult,
+}: ReadinessStatusProps) {
   const parsedPreview = preview ? parsePreviewSchema.safeParse(preview) : null;
   
   if (!parsedPreview?.success) {
@@ -29,6 +42,10 @@ export function ReadinessStatus({ preview, error }: ReadinessStatusProps) {
   }
   
   const viewModel: ParsePreviewViewModel | null = parsedPreview?.success ? parsedPreview.data : null;
+
+  const blockedFieldsRaw = saveError?.details?.blockedFields;
+  const blockedFieldParse = blockedFieldReasonSchema.array().safeParse(blockedFieldsRaw);
+  const blockedFields = blockedFieldParse.success ? blockedFieldParse.data : [];
 
   if (error) {
     return (
@@ -93,8 +110,38 @@ export function ReadinessStatus({ preview, error }: ReadinessStatusProps) {
           Saving is intentionally disabled in this story phase. Review missing fields and re-paste the source message.
         </div>
       ) : (
-        <div className="hint">Parse preview is ready. Save flow remains out of scope for this story and is not available yet.</div>
+        <div className="hint">Parse preview is ready. Save validation is available and runs before any write attempt.</div>
       )}
+
+      {saveError ? (
+        <div className="status-banner" role="alert">
+          <strong>{saveError.message}</strong>
+          {saveError.hint ? <div>{saveError.hint}</div> : null}
+          {blockedFields.length > 0 ? (
+            <ul className="capture-field-list" aria-label="Blocked fields from save validation">
+              {blockedFields.map((item) => (
+                <li key={`${item.field}-${item.reason}`} className="history-item">
+                  <div>
+                    <strong>{getFieldDisplayName(item.field)}</strong>
+                    <div className="history-meta">{item.reason === "missing" ? "Missing" : "Ambiguous"}</div>
+                  </div>
+                  <div className="history-meta">{item.hint}</div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {saveResult ? (
+        <div className="success-banner" role="status">
+          <strong>Save gate result: {saveResult.validationState}</strong>
+          <div>{saveResult.message}</div>
+          <div>
+            Deterministic scope note: validation passed, but write persistence remains disabled in this story.
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

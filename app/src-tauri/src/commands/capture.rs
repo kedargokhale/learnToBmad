@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::{Pool, Sqlite};
 use tauri::AppHandle;
+
+use crate::db::ledger;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +24,61 @@ pub struct ParsePreviewResponse {
     pub merchant_or_payee: Option<String>,
     pub readiness_state: &'static str,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAccountContext {
+    pub account_id: i64,
+    pub bank_name: String,
+    pub account_number: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTransactionParsedPayload {
+    pub raw_text: String,
+    pub normalized_text: String,
+    pub amount_minor: Option<i64>,
+    pub direction: Option<String>,
+    pub transaction_date: Option<String>,
+    pub bank_name: Option<String>,
+    pub account_number: Option<String>,
+    pub merchant_or_payee: Option<String>,
+    pub readiness_state: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTransactionAttemptRequest {
+    pub account_context: SaveAccountContext,
+    pub parsed_payload: SaveTransactionParsedPayload,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockedFieldIssue {
+    pub field: &'static str,
+    pub reason: &'static str,
+    pub hint: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTransactionAttemptResponse {
+    pub validation_state: &'static str,
+    pub accepted_for_write: bool,
+    pub checked_fields: Vec<&'static str>,
+    pub message: &'static str,
+}
+
+const VALIDATION_REQUIRED_FIELDS: [&str; 6] = [
+    "amountMinor",
+    "direction",
+    "transactionDate",
+    "bankName",
+    "accountNumber",
+    "merchantOrPayee",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessageFamily {
@@ -62,6 +120,217 @@ pub async fn parse_transaction_message(
     payload: ParseTransactionMessageRequest,
 ) -> CommandEnvelope<ParsePreviewResponse> {
     parse_preview_envelope(&payload.message)
+}
+
+#[tauri::command]
+pub async fn attempt_transaction_save(
+    app: AppHandle,
+    payload: SaveTransactionAttemptRequest,
+) -> CommandEnvelope<SaveTransactionAttemptResponse> {
+    match ledger::sqlite_pool(&app).await {
+        Ok(pool) => attempt_transaction_save_with_pool(&pool, payload).await,
+        Err(error) => persistence_error_envelope(error),
+    }
+}
+
+async fn attempt_transaction_save_with_pool(
+    pool: &Pool<Sqlite>,
+    payload: SaveTransactionAttemptRequest,
+) -> CommandEnvelope<SaveTransactionAttemptResponse> {
+    let transaction = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(error) => return persistence_error_envelope(error.to_string()),
+    };
+
+    if let Some(command_error) = validate_save_request(&payload) {
+        let _ = transaction.rollback().await;
+        return command_error;
+    }
+
+    let _ = transaction.rollback().await;
+
+    CommandEnvelope {
+        ok: true,
+        data: Some(SaveTransactionAttemptResponse {
+            validation_state: "passed",
+            accepted_for_write: false,
+            checked_fields: VALIDATION_REQUIRED_FIELDS.to_vec(),
+            message: "Validation passed. Persistence is deferred in this story scope.",
+        }),
+        error: None,
+    }
+}
+
+fn validate_save_request(
+    payload: &SaveTransactionAttemptRequest,
+) -> Option<CommandEnvelope<SaveTransactionAttemptResponse>> {
+    let mut blocked_fields: Vec<BlockedFieldIssue> = Vec::new();
+
+    if payload.account_context.account_id <= 0 {
+        blocked_fields.push(BlockedFieldIssue {
+            field: "accountNumber",
+            reason: "ambiguous",
+            hint: "Open the existing account workspace before attempting save.",
+        });
+    }
+
+    if payload.account_context.bank_name.trim().is_empty() {
+        blocked_fields.push(BlockedFieldIssue {
+            field: "bankName",
+            reason: "missing",
+            hint: "Select a ledger account with a known bank name.",
+        });
+    }
+
+    if payload.account_context.account_number.trim().is_empty() {
+        blocked_fields.push(BlockedFieldIssue {
+            field: "accountNumber",
+            reason: "missing",
+            hint: "Select a ledger account with a known account number.",
+        });
+    }
+
+    let parsed = &payload.parsed_payload;
+    let _ = (&parsed.raw_text, &parsed.normalized_text, &parsed.readiness_state);
+
+    match parsed.amount_minor {
+        None => blocked_fields.push(BlockedFieldIssue {
+            field: "amountMinor",
+            reason: "missing",
+            hint: "Provide the transaction amount from the source bank message.",
+        }),
+        Some(value) if value <= 0 => blocked_fields.push(BlockedFieldIssue {
+            field: "amountMinor",
+            reason: "ambiguous",
+            hint: "Use a positive amount in minor units (paise).",
+        }),
+        Some(_) => {}
+    }
+
+    match parsed.direction.as_deref() {
+        None => blocked_fields.push(BlockedFieldIssue {
+            field: "direction",
+            reason: "missing",
+            hint: "Specify whether the transaction is debit or credit.",
+        }),
+        Some("debit") | Some("credit") => {}
+        Some(_) => blocked_fields.push(BlockedFieldIssue {
+            field: "direction",
+            reason: "ambiguous",
+            hint: "Use only debit or credit.",
+        }),
+    }
+
+    match parsed.transaction_date.as_deref() {
+        None => blocked_fields.push(BlockedFieldIssue {
+            field: "transactionDate",
+            reason: "missing",
+            hint: "Provide the transaction date in YYYY-MM-DD format.",
+        }),
+        Some(date) if !is_yyyy_mm_dd(date) => blocked_fields.push(BlockedFieldIssue {
+            field: "transactionDate",
+            reason: "ambiguous",
+            hint: "Use an unambiguous date in YYYY-MM-DD format.",
+        }),
+        Some(_) => {}
+    }
+
+    validate_required_text_field(parsed.bank_name.as_deref(), "bankName", &mut blocked_fields);
+    validate_required_text_field(
+        parsed.account_number.as_deref(),
+        "accountNumber",
+        &mut blocked_fields,
+    );
+    validate_required_text_field(
+        parsed.merchant_or_payee.as_deref(),
+        "merchantOrPayee",
+        &mut blocked_fields,
+    );
+
+    if blocked_fields.is_empty() {
+        return None;
+    }
+
+    Some(CommandEnvelope {
+        ok: false,
+        data: None,
+        error: Some(ErrorEnvelope {
+            code: "VALIDATION_FAILED",
+            message: "Critical fields are missing or ambiguous. Save is blocked.".to_string(),
+            hint: Some("Review each field and re-parse or correct values before saving.".to_string()),
+            details: Some(json!({
+                "blockedFields": blocked_fields,
+                "nextAction": "Fix the listed fields and retry save.",
+            })),
+        }),
+    })
+}
+
+fn validate_required_text_field(
+    value: Option<&str>,
+    field: &'static str,
+    blocked_fields: &mut Vec<BlockedFieldIssue>,
+) {
+    match value.map(str::trim) {
+        None | Some("") => blocked_fields.push(BlockedFieldIssue {
+            field,
+            reason: "missing",
+            hint: required_field_hint(field),
+        }),
+        Some(text) if is_ambiguous_text(text) => blocked_fields.push(BlockedFieldIssue {
+            field,
+            reason: "ambiguous",
+            hint: ambiguous_field_hint(field),
+        }),
+        Some(_) => {}
+    }
+}
+
+fn required_field_hint(field: &str) -> &'static str {
+    match field {
+        "bankName" => "Provide the originating bank name from the message.",
+        "accountNumber" => "Provide the masked account/card identifier from the message.",
+        "merchantOrPayee" => "Provide the merchant or payee name exactly as shown.",
+        _ => "Provide a valid field value from the source message.",
+    }
+}
+
+fn ambiguous_field_hint(field: &str) -> &'static str {
+    match field {
+        "bankName" => "Replace placeholder bank text with the exact bank name.",
+        "accountNumber" => "Replace placeholder account text with the exact account identifier.",
+        "merchantOrPayee" => "Replace placeholder merchant/payee text with an explicit value.",
+        _ => "Replace ambiguous field text with a concrete value.",
+    }
+}
+
+fn is_ambiguous_text(value: &str) -> bool {
+    let lowered = value.trim().to_ascii_lowercase();
+
+    if lowered.is_empty() {
+        return true;
+    }
+
+    let exact = ["unknown", "ambiguous", "n/a", "na", "tbd", "-", "--"];
+    exact.contains(&lowered.as_str())
+        || lowered.contains("unknown")
+        || lowered.contains("ambiguous")
+}
+
+fn persistence_error_envelope<T>(message: String) -> CommandEnvelope<T>
+where
+    T: Serialize,
+{
+    CommandEnvelope {
+        ok: false,
+        data: None,
+        error: Some(ErrorEnvelope {
+            code: "PERSISTENCE_ERROR",
+            message,
+            hint: Some("Retry after restarting the app. If the problem persists, inspect local database availability.".to_string()),
+            details: None,
+        }),
+    }
 }
 
 fn parse_preview_envelope(
@@ -437,7 +706,7 @@ fn extract_account_number(message: &str) -> Option<String> {
         // Handle A/C, account markers (standard length 8-16)
         if ["a/c", "ac", "acct", "account"].contains(&token.as_str()) && idx + 1 < tokens.len() {
             let candidate = normalize_account_token(tokens[idx + 1]);
-            if !candidate.is_empty() {
+            if is_valid_account_candidate(&candidate) {
                 return Some(candidate);
             }
         }
@@ -461,13 +730,41 @@ fn extract_account_number(message: &str) -> Option<String> {
     // Fallback: scan for account-like patterns (8-16 chars)
     for token in &tokens {
         let candidate = normalize_account_token(token);
-        if candidate.len() >= 8 && candidate.len() <= 16 && candidate.chars().any(|ch| ch.is_ascii_digit()) && candidate.chars().any(|ch| ch.is_ascii_alphabetic() || ch == 'X' || ch == 'x' || ch == '*') {
+        let is_masked_style = !candidate.is_empty()
+            && candidate
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || ch == 'X' || ch == 'x' || ch == '*')
+            && candidate.chars().any(|ch| ch == 'X' || ch == 'x' || ch == '*')
+            && candidate.chars().any(|ch| ch.is_ascii_digit());
+
+        if candidate.len() >= 8 && candidate.len() <= 16 && is_masked_style {
             return Some(candidate);
         }
     }
 
     None
 }
+
+fn is_valid_account_candidate(candidate: &str) -> bool {
+    if candidate.is_empty() {
+        return false;
+    }
+
+    let lowered = candidate.to_ascii_lowercase();
+    let reserved = [
+        "towards", "to", "from", "on", "ref", "value", "bal", "clear", "bank", "upi", "call", "sms", "block",
+    ];
+
+    if reserved.contains(&lowered.as_str()) {
+        return false;
+    }
+
+    let has_digit = candidate.chars().any(|ch| ch.is_ascii_digit());
+    let has_mask_char = candidate.chars().any(|ch| ch == 'X' || ch == 'x' || ch == '*');
+
+    has_digit || has_mask_char
+}
+
 fn extract_merchant_or_payee(message: &str) -> Option<String> {
     let tokens: Vec<_> = message.split_whitespace().collect();
     let marker_priority = ["at", "to", "towards", "from"];
@@ -488,6 +785,22 @@ fn extract_merchant_or_payee(message: &str) -> Option<String> {
         for idx in 0..tokens.len() {
             let marker = clean_token(tokens[idx]).to_lowercase();
             if marker == preferred_marker {
+                // Ignore known support/alert tails like "... SMS BLOCK UPI to 7308...".
+                if marker == "to" && idx > 0 {
+                    let prev = clean_token(tokens[idx - 1]).to_lowercase();
+                    if ["upi", "sms", "block", "call"].contains(&prev.as_str()) {
+                        continue;
+                    }
+                }
+
+                // Ignore source-bank phrases like "From HDFC Bank" as payee candidates.
+                if marker == "from" && idx + 2 < tokens.len() {
+                    let third = clean_token(tokens[idx + 2]).to_lowercase();
+                    if third == "bank" {
+                        continue;
+                    }
+                }
+
                 let mut collected = Vec::new();
                 let mut scan_idx = idx + 1;
                 let stopwords = ["on", "ref", "avl", "bal", "clear", "value", "is", "a/c", "ac", "account", "bank", "via", "using", "the", "your", "my", "an", "a", "upi"];
@@ -504,6 +817,11 @@ fn extract_merchant_or_payee(message: &str) -> Option<String> {
                     let token = clean_token(tokens[scan_idx]);
                     let lowered = token.to_lowercase();
                     if token.is_empty() || stopwords.contains(&lowered.as_str()) {
+                        break;
+                    }
+
+                    // Do not treat support/reference numbers as payee names.
+                    if token.chars().all(|ch| ch.is_ascii_digit()) && token.len() >= 8 {
                         break;
                     }
 
@@ -732,7 +1050,222 @@ fn uppercase_first(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_message_family, parse_preview_envelope, MessageFamily};
+    use super::{
+        attempt_transaction_save_with_pool, classify_message_family, parse_preview_envelope,
+        MessageFamily, SaveAccountContext, SaveTransactionAttemptRequest,
+        SaveTransactionParsedPayload,
+    };
+    use sqlx::{sqlite::SqlitePoolOptions, Row};
+
+    async fn setup_pool() -> sqlx::Pool<sqlx::Sqlite> {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite pool");
+
+        sqlx::raw_sql(include_str!("../../migrations/0001_create_accounts_and_ledger_entries.sql"))
+            .execute(&pool)
+            .await
+            .expect("migration to apply");
+
+        sqlx::query("INSERT INTO accounts (bank_name, account_number) VALUES ('HDFC Bank', 'XX1234')")
+            .execute(&pool)
+            .await
+            .expect("account insert should succeed");
+
+        let account_id = sqlx::query("SELECT id FROM accounts LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .expect("account id should exist")
+            .get::<i64, _>("id");
+
+        sqlx::query(
+            "INSERT INTO ledger_entries (account_id, entry_kind, amount_minor) VALUES ($1, 'opening_balance', 10000)",
+        )
+        .bind(account_id)
+        .execute(&pool)
+        .await
+        .expect("opening entry insert should succeed");
+
+        pool
+    }
+
+    async fn table_counts(pool: &sqlx::Pool<sqlx::Sqlite>) -> (i64, i64) {
+        let account_count = sqlx::query("SELECT COUNT(*) AS count FROM accounts")
+            .fetch_one(pool)
+            .await
+            .expect("account count query should succeed")
+            .get::<i64, _>("count");
+
+        let ledger_count = sqlx::query("SELECT COUNT(*) AS count FROM ledger_entries")
+            .fetch_one(pool)
+            .await
+            .expect("ledger count query should succeed")
+            .get::<i64, _>("count");
+
+        (account_count, ledger_count)
+    }
+
+    #[tokio::test]
+    async fn blocks_save_for_missing_critical_fields_without_mutation() {
+        let pool = setup_pool().await;
+        let before = table_counts(&pool).await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "debited INR 1250.50".to_string(),
+                    normalized_text: "debited INR 1250.50".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: None,
+                    bank_name: None,
+                    account_number: None,
+                    merchant_or_payee: None,
+                    readiness_state: Some("needs-review".to_string()),
+                },
+            },
+        )
+        .await;
+
+        assert!(!result.ok);
+        let error = result.error.expect("validation error expected");
+        assert_eq!(error.code, "VALIDATION_FAILED");
+
+        let details = error.details.expect("details should exist");
+        let blocked = details
+            .get("blockedFields")
+            .and_then(|value| value.as_array())
+            .expect("blockedFields array should exist");
+
+        let fields: Vec<_> = blocked
+            .iter()
+            .filter_map(|item| item.get("field"))
+            .filter_map(|value| value.as_str())
+            .collect();
+
+        assert_eq!(
+            fields,
+            vec!["transactionDate", "bankName", "accountNumber", "merchantOrPayee"]
+        );
+
+        let after = table_counts(&pool).await;
+        assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn treats_ambiguous_critical_values_as_invalid_and_deterministic() {
+        let pool = setup_pool().await;
+
+        let request = SaveTransactionAttemptRequest {
+            account_context: SaveAccountContext {
+                account_id: 1,
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+            },
+            parsed_payload: SaveTransactionParsedPayload {
+                raw_text: "sample".to_string(),
+                normalized_text: "sample".to_string(),
+                amount_minor: Some(1000),
+                direction: Some("debit".to_string()),
+                transaction_date: Some("2026/05/01".to_string()),
+                bank_name: Some("unknown".to_string()),
+                account_number: Some("N/A".to_string()),
+                merchant_or_payee: Some("ambiguous".to_string()),
+                readiness_state: Some("ready".to_string()),
+            },
+        };
+
+        let first = attempt_transaction_save_with_pool(&pool, request).await;
+
+        let second = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "sample".to_string(),
+                    normalized_text: "sample".to_string(),
+                    amount_minor: Some(1000),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026/05/01".to_string()),
+                    bank_name: Some("unknown".to_string()),
+                    account_number: Some("N/A".to_string()),
+                    merchant_or_payee: Some("ambiguous".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+            },
+        )
+        .await;
+
+        assert!(!first.ok);
+        assert!(!second.ok);
+
+        let first_json = serde_json::to_value(&first.error).expect("first error should serialize");
+        let second_json = serde_json::to_value(&second.error).expect("second error should serialize");
+        assert_eq!(first_json, second_json);
+    }
+
+    #[tokio::test]
+    async fn passes_validation_for_complete_payload_without_mutation() {
+        let pool = setup_pool().await;
+        let before = table_counts(&pool).await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+            },
+        )
+        .await;
+
+        assert!(result.ok);
+        let data = result.data.expect("success payload expected");
+        assert_eq!(data.validation_state, "passed");
+        assert!(!data.accepted_for_write);
+        assert_eq!(
+            data.checked_fields,
+            vec![
+                "amountMinor",
+                "direction",
+                "transactionDate",
+                "bankName",
+                "accountNumber",
+                "merchantOrPayee"
+            ]
+        );
+
+        let after = table_counts(&pool).await;
+        assert_eq!(before, after);
+    }
 
 
 
@@ -1059,6 +1592,62 @@ mod tests {
         assert_eq!(parsed.transaction_date.as_deref(), Some("2026-05-08"));
         assert_eq!(parsed.account_number.as_deref(), Some("XX1234"));
         assert_eq!(parsed.merchant_or_payee.as_deref(), Some("RAHUL"));
+    }
+
+    #[test]
+    fn does_not_use_upi_block_number_as_payee_when_explicit_payee_missing() {
+        let message = "Sent Rs.180.00 From HDFC Bank A/C *9410 On 11/05/26 Ref 111126292388 Not You? Call 18002586161/SMS BLOCK UPI to 7308080800";
+
+        let result = parse_preview_envelope(message);
+
+        assert!(result.ok);
+        let parsed = result.data.expect("parsed payload to exist");
+        assert_eq!(parsed.direction.as_deref(), Some("debit"));
+        assert_eq!(parsed.amount_minor, Some(18000));
+        assert_eq!(parsed.transaction_date.as_deref(), Some("2026-05-11"));
+        assert_eq!(parsed.account_number.as_deref(), Some("*9410"));
+        assert_ne!(parsed.merchant_or_payee.as_deref(), Some("7308080800"));
+        if let Some(payee) = parsed.merchant_or_payee.as_deref() {
+            assert!(
+                !payee.chars().all(|ch| ch.is_ascii_digit()),
+                "payee should never be a plain numeric support/reference value"
+            );
+        }
+        assert_eq!(parsed.readiness_state, "needs-review");
+    }
+
+    #[test]
+    fn keeps_account_number_missing_when_message_has_bank_and_payee_but_no_account_token() {
+        let message = "Sent Rs.180.00 From HDFC Bank To Mr YOGESH RAJENDRA RAKSHE On 11/05/26 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808";
+
+        let result = parse_preview_envelope(message);
+
+        assert!(result.ok);
+        let parsed = result.data.expect("parsed payload to exist");
+        assert_eq!(parsed.direction.as_deref(), Some("debit"));
+        assert_eq!(parsed.amount_minor, Some(18000));
+        assert_eq!(parsed.transaction_date.as_deref(), Some("2026-05-11"));
+        assert_eq!(parsed.bank_name.as_deref(), Some("HDFC Bank"));
+        assert_eq!(parsed.account_number, None);
+        assert_eq!(parsed.merchant_or_payee.as_deref(), Some("Mr YOGESH RAJENDRA"));
+        assert_eq!(parsed.readiness_state, "needs-review");
+    }
+
+    #[test]
+    fn keeps_needs_review_when_ac_marker_has_no_account_value() {
+        let message = "INR 17,426.00 debited to A/c towards 084403300131700 -GOKHALE Value 10-MAY-2026 . Clear Bal is INR 25,905.10 -DNS Bank";
+
+        let result = parse_preview_envelope(message);
+
+        assert!(result.ok);
+        let parsed = result.data.expect("parsed payload to exist");
+        assert_eq!(parsed.direction.as_deref(), Some("debit"));
+        assert_eq!(parsed.amount_minor, Some(1742600));
+        assert_eq!(parsed.transaction_date.as_deref(), Some("2026-05-10"));
+        assert_eq!(parsed.bank_name.as_deref(), Some("DNS Bank"));
+        assert_eq!(parsed.account_number, None);
+        assert_eq!(parsed.merchant_or_payee.as_deref(), Some("GOKHALE"));
+        assert_eq!(parsed.readiness_state, "needs-review");
     }
 }
 

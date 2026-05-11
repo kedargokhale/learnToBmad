@@ -3,7 +3,17 @@ import { isTauri } from "@tauri-apps/api/core";
 
 import { ReadinessStatus } from "./features/capture/components/ReadinessStatus";
 import { TransactionInput } from "./features/capture/components/TransactionInput";
-import type { CommandError, ParsePreviewData } from "./features/capture/service";
+import {
+  attemptTransactionSave,
+  type CommandError,
+  type ParsePreviewData,
+  type SaveTransactionAttemptData,
+} from "./features/capture/service";
+import {
+  deriveBlockedFieldReasons,
+  getFieldDisplayName,
+  parsePreviewSchema,
+} from "./features/capture/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
 import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineView";
 import {
@@ -35,6 +45,19 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [parsePreview, setParsePreview] = useState<ParsePreviewData | null>(null);
   const [parseError, setParseError] = useState<CommandError | null>(null);
+  const [saveError, setSaveError] = useState<CommandError | null>(null);
+  const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const parsedPreview = parsePreviewSchema.safeParse(parsePreview);
+  const normalizedPreview = parsedPreview.success ? parsedPreview.data : null;
+  const blockedFields = parseError
+    ? deriveBlockedFieldReasons(null)
+    : deriveBlockedFieldReasons(normalizedPreview);
+  const saveBlockedReasons = blockedFields.map((item) => {
+    const reasonLabel = item.reason === "missing" ? "missing" : "ambiguous";
+    return `${getFieldDisplayName(item.field)}: ${reasonLabel}. ${item.hint}`;
+  });
 
   const loadBaseline = useCallback(async () => {
     setIsLoading(true);
@@ -62,6 +85,46 @@ function App() {
     }
   }, []);
 
+  const runSaveAttempt = useCallback(async () => {
+    if (!baseline?.account || !normalizedPreview || blockedFields.length > 0) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveResult(null);
+
+    try {
+      const result = await attemptTransactionSave({
+        accountContext: {
+          accountId: baseline.account.id,
+          bankName: baseline.account.bankName,
+          accountNumber: baseline.account.accountNumber,
+        },
+        parsedPayload: normalizedPreview,
+      });
+
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+
+      setSaveResult(result.data);
+
+      if (result.data.acceptedForWrite) {
+        await loadBaseline();
+      }
+    } catch {
+      setSaveError({
+        code: "PERSISTENCE_ERROR",
+        message: "Save validation failed before a deterministic result was produced.",
+        hint: "Retry save validation after parsing the message again.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [baseline, blockedFields.length, loadBaseline, normalizedPreview]);
+
   useEffect(() => {
     void loadBaseline();
   }, [loadBaseline]);
@@ -85,9 +148,19 @@ function App() {
               onPreviewChange={(preview, error) => {
                 setParsePreview(preview);
                 setParseError(error);
+                setSaveError(null);
+                setSaveResult(null);
               }}
+              onAttemptSave={runSaveAttempt}
+              saveBlockedReasons={saveBlockedReasons}
+              isSaving={isSaving}
             />
-            <ReadinessStatus preview={parsePreview} error={parseError} />
+            <ReadinessStatus
+              preview={parsePreview}
+              error={parseError}
+              saveError={saveError}
+              saveResult={saveResult}
+            />
           </section>
           <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
         </>

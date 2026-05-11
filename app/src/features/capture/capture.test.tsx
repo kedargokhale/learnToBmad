@@ -6,15 +6,41 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReadinessStatus } from "./components/ReadinessStatus";
 import { TransactionInput } from "./components/TransactionInput";
-import type { CommandError, ParsePreviewData, ParsePreviewEnvelope } from "./service";
+import type {
+  CommandError,
+  ParsePreviewData,
+  ParsePreviewEnvelope,
+  SaveTransactionAttemptData,
+  SaveTransactionAttemptEnvelope,
+} from "./service";
 
 function CaptureHarness({
   parseMessage,
+  saveAttempt,
 }: {
   parseMessage: (payload: { message: string }) => Promise<ParsePreviewEnvelope>;
+  saveAttempt?: () => Promise<SaveTransactionAttemptEnvelope>;
 }) {
   const [preview, setPreview] = useState<ParsePreviewData | null>(null);
   const [error, setError] = useState<CommandError | null>(null);
+  const [saveError, setSaveError] = useState<CommandError | null>(null);
+  const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
+  const [ledgerSnapshot, setLedgerSnapshot] = useState("Ledger entries: 1");
+
+  const blockedReasons = preview
+    ? [
+        preview.amountMinor === null ? "Amount: missing. Parse or enter the transaction amount from the source message." : null,
+        preview.direction === null ? "Direction: missing. Direction must be debit or credit." : null,
+        preview.transactionDate === null ? "Transaction date: missing. Provide transaction date in YYYY-MM-DD." : null,
+        preview.bankName === null ? "Bank: missing. Provide the bank name from the source message." : null,
+        preview.accountNumber === null
+          ? "Account: missing. Provide the masked account/card identifier from the source message."
+          : null,
+        preview.merchantOrPayee === null
+          ? "Merchant/Payee: missing. Provide the merchant or payee from the source message."
+          : null,
+      ].filter((value): value is string => value !== null)
+    : ["Amount: missing. Parse or enter the transaction amount from the source message."];
 
   return (
     <>
@@ -23,9 +49,29 @@ function CaptureHarness({
         onPreviewChange={(nextPreview, nextError) => {
           setPreview(nextPreview);
           setError(nextError);
+          setSaveError(null);
+          setSaveResult(null);
+        }}
+        saveBlockedReasons={blockedReasons}
+        onAttemptSave={async () => {
+          if (!saveAttempt) {
+            return;
+          }
+
+          const result = await saveAttempt();
+          if (!result.ok) {
+            setSaveError(result.error);
+            return;
+          }
+
+          setSaveResult(result.data);
+          if (result.data.acceptedForWrite) {
+            setLedgerSnapshot("Ledger entries: 2");
+          }
         }}
       />
-      <ReadinessStatus preview={preview} error={error} />
+      <ReadinessStatus preview={preview} error={error} saveError={saveError} saveResult={saveResult} />
+      <div aria-label="ledger snapshot">{ledgerSnapshot}</div>
     </>
   );
 }
@@ -94,7 +140,7 @@ describe("Capture parse UX", () => {
       },
     });
 
-    render(<CaptureHarness parseMessage={parseMessage} />);
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
@@ -118,14 +164,14 @@ describe("Capture parse UX", () => {
       },
     });
 
-    render(<CaptureHarness parseMessage={parseMessage} />);
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("Unsupported sample");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/not supported for safe parsing/i);
     expect(screen.getByText(/guided next action/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save transaction/i })).toBeDisabled();
   });
 
   it("renders the same readiness result when pasting identical text twice", async () => {
@@ -145,7 +191,7 @@ describe("Capture parse UX", () => {
       },
     });
 
-    render(<CaptureHarness parseMessage={parseMessage} />);
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("ICICI Bank Msg: INR 5000 credited to account 9988 on 01/05/2026 from ACME PAYROLL.");
@@ -184,7 +230,7 @@ describe("Capture parse UX", () => {
       },
     });
 
-    render(<CaptureHarness parseMessage={parseMessage} />);
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("debited INR 1250.50 on 2026-05-01");
@@ -212,7 +258,7 @@ describe("Capture parse UX", () => {
       .mockResolvedValueOnce({ ok: false, error: sample1Error })
       .mockResolvedValueOnce({ ok: false, error: sample2Error });
 
-    render(<CaptureHarness parseMessage={parseMessage} />);
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("No amount or direction here");
@@ -227,5 +273,85 @@ describe("Capture parse UX", () => {
     expect(secondError).toHaveTextContent(/not supported for safe parsing/i);
     
     expect(parseMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows blocked save reasons and keeps save disabled when critical fields are missing", async () => {
+    const user = userEvent.setup();
+    const saveAttempt = vi.fn();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "debited INR 1250.50 on 2026-05-01",
+        normalizedText: "debited INR 1250.50 on 2026-05-01",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        readinessState: "needs-review",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("debited INR 1250.50 on 2026-05-01");
+
+    const saveButton = screen.getByRole("button", { name: /save transaction/i });
+    expect(saveButton).toBeDisabled();
+    expect(await screen.findByText(/save blocked until all critical fields are valid/i)).toBeInTheDocument();
+    expect(screen.getByText(/bank: missing/i)).toBeInTheDocument();
+    expect(saveAttempt).not.toHaveBeenCalled();
+  });
+
+  it("shows deterministic blocked-save details and keeps ledger view unchanged", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at ambiguous merchant.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at ambiguous merchant.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BIGBAZAAR",
+        readinessState: "ready",
+      },
+    });
+
+    const saveAttempt = vi.fn().mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Critical fields are missing or ambiguous. Save is blocked.",
+        hint: "Review each field and re-parse or correct values before saving.",
+        details: {
+          blockedFields: [
+            {
+              field: "merchantOrPayee",
+              reason: "ambiguous",
+              hint: "Replace placeholder merchant/payee text with an explicit value.",
+            },
+          ],
+        },
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at ambiguous merchant.");
+
+    const saveButton = await screen.findByRole("button", { name: /save transaction/i });
+    expect(saveButton).toBeEnabled();
+
+    await user.click(saveButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/critical fields are missing or ambiguous/i);
+    expect(screen.getAllByText(/merchant\/payee/i).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/ledger snapshot/i)).toHaveTextContent("Ledger entries: 1");
   });
 });
