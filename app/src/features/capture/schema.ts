@@ -17,6 +17,8 @@ export const blockedFieldReasonSchema = z.object({
   hint: z.string().min(1),
 });
 
+export const correctionMapSchema = z.partialRecord(criticalFieldSchema, z.string());
+
 export const criticalFieldOrder = criticalFieldSchema.options;
 
 export const parsePreviewSchema = z.object({
@@ -33,6 +35,7 @@ export const parsePreviewSchema = z.object({
 
 export type ParsePreviewViewModel = z.infer<typeof parsePreviewSchema>;
 export type BlockedFieldReason = z.infer<typeof blockedFieldReasonSchema>;
+export type CorrectionMap = z.infer<typeof correctionMapSchema>;
 
 export function formatCurrency(amountMinor: number | null): string {
   if (amountMinor === null) return "-";
@@ -79,6 +82,87 @@ function isAmbiguousText(value: string): boolean {
 
 function isYyyyMmDd(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseAmountToMinorUnits(rawValue: string): number | null {
+  const normalized = rawValue.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(normalized.replace(/,/g, ""));
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.round(parsed * 100);
+}
+
+export function getFieldValueForCorrection(
+  preview: ParsePreviewViewModel,
+  field: BlockedFieldReason["field"],
+): string {
+  switch (field) {
+    case "amountMinor":
+      return preview.amountMinor === null ? "" : (preview.amountMinor / 100).toFixed(2);
+    case "direction":
+      return preview.direction ?? "";
+    case "transactionDate":
+      return preview.transactionDate ?? "";
+    case "bankName":
+      return preview.bankName ?? "";
+    case "accountNumber":
+      return preview.accountNumber ?? "";
+    case "merchantOrPayee":
+      return preview.merchantOrPayee ?? "";
+  }
+}
+
+function applySingleCorrection(
+  preview: ParsePreviewViewModel,
+  field: BlockedFieldReason["field"],
+  rawValue: string,
+): ParsePreviewViewModel {
+  const normalized = rawValue.trim();
+
+  switch (field) {
+    case "amountMinor":
+      return { ...preview, amountMinor: parseAmountToMinorUnits(rawValue) };
+    case "direction": {
+      const lower = normalized.toLowerCase();
+      if (lower === "debit" || lower === "credit") {
+        return { ...preview, direction: lower };
+      }
+      return { ...preview, direction: null };
+    }
+    case "transactionDate":
+      return { ...preview, transactionDate: normalized || null };
+    case "bankName":
+      return { ...preview, bankName: normalized || null };
+    case "accountNumber":
+      return { ...preview, accountNumber: normalized || null };
+    case "merchantOrPayee":
+      return { ...preview, merchantOrPayee: normalized || null };
+  }
+}
+
+export function applyCorrectionMap(
+  preview: ParsePreviewViewModel,
+  correctionMap: CorrectionMap,
+): ParsePreviewViewModel {
+  return criticalFieldOrder.reduce((currentPreview, field) => {
+    const nextValue = correctionMap[field];
+    if (typeof nextValue !== "string") {
+      return currentPreview;
+    }
+    return applySingleCorrection(currentPreview, field, nextValue);
+  }, preview);
+}
+
+export function deriveReadinessStateFromBlockedFields(
+  blockedFields: ReadonlyArray<BlockedFieldReason>,
+): ParsePreviewViewModel["readinessState"] {
+  return blockedFields.length === 0 ? "ready" : "needs-review";
 }
 
 export function deriveBlockedFieldReasons(

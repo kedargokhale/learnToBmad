@@ -5,7 +5,17 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReadinessStatus } from "./components/ReadinessStatus";
+import { CorrectionPanel } from "./components/CorrectionPanel";
 import { TransactionInput } from "./components/TransactionInput";
+import {
+  applyCorrectionMap,
+  correctionMapSchema,
+  deriveBlockedFieldReasons,
+  deriveReadinessStateFromBlockedFields,
+  getFieldDisplayName,
+  parsePreviewSchema,
+  type BlockedFieldReason,
+} from "./schema";
 import type {
   CommandError,
   ParsePreviewData,
@@ -26,21 +36,26 @@ function CaptureHarness({
   const [saveError, setSaveError] = useState<CommandError | null>(null);
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
   const [ledgerSnapshot, setLedgerSnapshot] = useState("Ledger entries: 1");
+  const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  const [correctionMap, setCorrectionMap] = useState<
+    Partial<Record<BlockedFieldReason["field"], string>>
+  >({});
 
-  const blockedReasons = preview
-    ? [
-        preview.amountMinor === null ? "Amount: missing. Parse or enter the transaction amount from the source message." : null,
-        preview.direction === null ? "Direction: missing. Direction must be debit or credit." : null,
-        preview.transactionDate === null ? "Transaction date: missing. Provide transaction date in YYYY-MM-DD." : null,
-        preview.bankName === null ? "Bank: missing. Provide the bank name from the source message." : null,
-        preview.accountNumber === null
-          ? "Account: missing. Provide the masked account/card identifier from the source message."
-          : null,
-        preview.merchantOrPayee === null
-          ? "Merchant/Payee: missing. Provide the merchant or payee from the source message."
-          : null,
-      ].filter((value): value is string => value !== null)
-    : ["Amount: missing. Parse or enter the transaction amount from the source message."];
+  const parsedPreview = parsePreviewSchema.safeParse(preview);
+  const normalizedPreview = parsedPreview.success ? parsedPreview.data : null;
+  const parsedCorrectionMap = correctionMapSchema.safeParse(correctionMap);
+  const correctedPreview =
+    normalizedPreview && parsedCorrectionMap.success
+      ? applyCorrectionMap(normalizedPreview, parsedCorrectionMap.data)
+      : normalizedPreview;
+  const blockedFields = error
+    ? deriveBlockedFieldReasons(null)
+    : deriveBlockedFieldReasons(correctedPreview);
+  const blockedReasons = blockedFields.map((item) => {
+    const reasonLabel = item.reason === "missing" ? "missing" : "ambiguous";
+    return `${getFieldDisplayName(item.field)}: ${reasonLabel}. ${item.hint}`;
+  });
+  const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
   return (
     <>
@@ -51,10 +66,16 @@ function CaptureHarness({
           setError(nextError);
           setSaveError(null);
           setSaveResult(null);
+          setIsCorrectionOpen(false);
+          setCorrectionMap({});
         }}
         saveBlockedReasons={blockedReasons}
         onAttemptSave={async () => {
           if (!saveAttempt) {
+            return;
+          }
+
+          if (!correctedPreview || blockedFields.length > 0) {
             return;
           }
 
@@ -64,13 +85,48 @@ function CaptureHarness({
             return;
           }
 
-          setSaveResult(result.data);
+          setSaveResult({
+            ...result.data,
+            validationState: deriveReadinessStateFromBlockedFields(blockedFields) === "ready" ? "passed" : "passed",
+          });
           if (result.data.acceptedForWrite) {
             setLedgerSnapshot("Ledger entries: 2");
           }
         }}
       />
-      <ReadinessStatus preview={preview} error={error} saveError={saveError} saveResult={saveResult} />
+      <ReadinessStatus
+        preview={correctedPreview}
+        error={error}
+        saveError={saveError}
+        saveResult={saveResult}
+        blockedFields={blockedFields}
+        onOpenCorrection={() => {
+          if (blockedFields.length > 0) {
+            setIsCorrectionOpen(true);
+          }
+        }}
+        hasCorrectionsApplied={hasCorrectionsApplied}
+      />
+      <CorrectionPanel
+        isOpen={isCorrectionOpen}
+        blockedFields={blockedFields}
+        preview={correctedPreview}
+        correctionValues={correctionMap}
+        onCorrectionChange={(field, value) => {
+          setCorrectionMap((current) => ({
+            ...current,
+            [field]: value,
+          }));
+          setSaveError(null);
+          setSaveResult(null);
+        }}
+        onApply={() => {
+          setIsCorrectionOpen(false);
+        }}
+        onClose={() => {
+          setIsCorrectionOpen(false);
+        }}
+      />
       <div aria-label="ledger snapshot">{ledgerSnapshot}</div>
     </>
   );
@@ -197,7 +253,8 @@ describe("Capture parse UX", () => {
     await user.paste("ICICI Bank Msg: INR 5000 credited to account 9988 on 01/05/2026 from ACME PAYROLL.");
 
     const firstStateText = (await screen.findByText(/state: ready for validation/i)).textContent;
-    const firstMerchantText = screen.getAllByText(/acme payroll/i).at(-1)?.textContent;
+    const firstMerchantMatches = screen.getAllByText(/acme payroll/i);
+    const firstMerchantText = firstMerchantMatches[firstMerchantMatches.length - 1]?.textContent;
 
     await user.clear(screen.getByLabelText(/bank message/i));
     await user.paste("ICICI Bank Msg: INR 5000 credited to account 9988 on 01/05/2026 from ACME PAYROLL.");
@@ -207,7 +264,8 @@ describe("Capture parse UX", () => {
     });
 
     const secondStateText = (await screen.findByText(/state: ready for validation/i)).textContent;
-    const secondMerchantText = screen.getAllByText(/acme payroll/i).at(-1)?.textContent;
+    const secondMerchantMatches = screen.getAllByText(/acme payroll/i);
+    const secondMerchantText = secondMerchantMatches[secondMerchantMatches.length - 1]?.textContent;
 
     expect(firstStateText).toBe(secondStateText);
     expect(firstMerchantText).toBe(secondMerchantText);
@@ -301,8 +359,136 @@ describe("Capture parse UX", () => {
     const saveButton = screen.getByRole("button", { name: /save transaction/i });
     expect(saveButton).toBeDisabled();
     expect(await screen.findByText(/save blocked until all critical fields are valid/i)).toBeInTheDocument();
-    expect(screen.getByText(/bank: missing/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/bank: missing/i).length).toBeGreaterThan(0);
     expect(saveAttempt).not.toHaveBeenCalled();
+  });
+
+  it("shows only blocked fields in guided corrections with deterministic hints", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "debited INR 1250.50 on 2026-05-01",
+        normalizedText: "debited INR 1250.50 on 2026-05-01",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        readinessState: "needs-review",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("debited INR 1250.50 on 2026-05-01");
+
+    await user.click(await screen.findByRole("button", { name: /open guided corrections/i }));
+
+    expect(await screen.findByLabelText(/^bank$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^account$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^merchant\/payee$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^amount$/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/provide the bank name from the source message/i).length).toBeGreaterThan(0);
+  });
+
+  it("shrinks blocked fields deterministically as corrections are applied", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "debited INR 1250.50 on 2026-05-01",
+        normalizedText: "debited INR 1250.50 on 2026-05-01",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        readinessState: "needs-review",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("debited INR 1250.50 on 2026-05-01");
+
+    const saveButton = screen.getByRole("button", { name: /save transaction/i });
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByRole("list", { name: /current blocked field list/i }).querySelectorAll("li")).toHaveLength(3);
+
+    await user.click(screen.getByRole("button", { name: /open guided corrections/i }));
+    await user.type(screen.getByLabelText(/^bank$/i), "HDFC Bank");
+    expect(screen.getByRole("list", { name: /current blocked field list/i }).querySelectorAll("li")).toHaveLength(2);
+
+    await user.type(screen.getByLabelText(/^account$/i), "XX1234");
+    expect(screen.getByRole("list", { name: /current blocked field list/i }).querySelectorAll("li")).toHaveLength(1);
+
+    await user.type(screen.getByLabelText(/^merchant\/payee$/i), "BigBazaar");
+    await waitFor(() => {
+      expect(screen.queryByRole("list", { name: /current blocked field list/i })).not.toBeInTheDocument();
+    });
+    expect(saveButton).toBeEnabled();
+  });
+
+  it("keeps save retry unavailable until corrections are complete, then reuses save attempt path", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "debited INR 1250.50 on 2026-05-01",
+        normalizedText: "debited INR 1250.50 on 2026-05-01",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        readinessState: "needs-review",
+      },
+    });
+    const saveAttempt = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        validationState: "passed",
+        acceptedForWrite: false,
+        checkedFields: [
+          "amountMinor",
+          "direction",
+          "transactionDate",
+          "bankName",
+          "accountNumber",
+          "merchantOrPayee",
+        ],
+        message: "Validation passed without write in this phase.",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("debited INR 1250.50 on 2026-05-01");
+
+    const saveButton = screen.getByRole("button", { name: /save transaction/i });
+    expect(saveButton).toBeDisabled();
+    await user.click(saveButton);
+    expect(saveAttempt).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /open guided corrections/i }));
+    await user.type(screen.getByLabelText(/^bank$/i), "HDFC Bank");
+    await user.type(screen.getByLabelText(/^account$/i), "XX1234");
+    await user.type(screen.getByLabelText(/^merchant\/payee$/i), "BigBazaar");
+
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+
+    await user.click(saveButton);
+    expect(saveAttempt).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/save gate result: passed/i)).toBeInTheDocument();
   });
 
   it("shows deterministic blocked-save details and keeps ledger view unchanged", async () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
 import { ReadinessStatus } from "./features/capture/components/ReadinessStatus";
+import { CorrectionPanel } from "./features/capture/components/CorrectionPanel";
 import { TransactionInput } from "./features/capture/components/TransactionInput";
 import {
   attemptTransactionSave,
@@ -10,9 +11,13 @@ import {
   type SaveTransactionAttemptData,
 } from "./features/capture/service";
 import {
+  applyCorrectionMap,
+  correctionMapSchema,
+  deriveReadinessStateFromBlockedFields,
   deriveBlockedFieldReasons,
   getFieldDisplayName,
   parsePreviewSchema,
+  type BlockedFieldReason,
 } from "./features/capture/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
 import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineView";
@@ -48,16 +53,26 @@ function App() {
   const [saveError, setSaveError] = useState<CommandError | null>(null);
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  const [correctionMap, setCorrectionMap] = useState<
+    Partial<Record<BlockedFieldReason["field"], string>>
+  >({});
 
   const parsedPreview = parsePreviewSchema.safeParse(parsePreview);
   const normalizedPreview = parsedPreview.success ? parsedPreview.data : null;
+  const parsedCorrectionMap = correctionMapSchema.safeParse(correctionMap);
+  const correctedPreview =
+    normalizedPreview && parsedCorrectionMap.success
+      ? applyCorrectionMap(normalizedPreview, parsedCorrectionMap.data)
+      : normalizedPreview;
   const blockedFields = parseError
     ? deriveBlockedFieldReasons(null)
-    : deriveBlockedFieldReasons(normalizedPreview);
+    : deriveBlockedFieldReasons(correctedPreview);
   const saveBlockedReasons = blockedFields.map((item) => {
     const reasonLabel = item.reason === "missing" ? "missing" : "ambiguous";
     return `${getFieldDisplayName(item.field)}: ${reasonLabel}. ${item.hint}`;
   });
+  const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
   const loadBaseline = useCallback(async () => {
     setIsLoading(true);
@@ -86,7 +101,7 @@ function App() {
   }, []);
 
   const runSaveAttempt = useCallback(async () => {
-    if (!baseline?.account || !normalizedPreview || blockedFields.length > 0) {
+    if (!baseline?.account || !correctedPreview || blockedFields.length > 0) {
       return;
     }
 
@@ -101,7 +116,10 @@ function App() {
           bankName: baseline.account.bankName,
           accountNumber: baseline.account.accountNumber,
         },
-        parsedPayload: normalizedPreview,
+        parsedPayload: {
+          ...correctedPreview,
+          readinessState: deriveReadinessStateFromBlockedFields(blockedFields),
+        },
       });
 
       if (!result.ok) {
@@ -123,7 +141,7 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [baseline, blockedFields.length, loadBaseline, normalizedPreview]);
+  }, [baseline, blockedFields, correctedPreview, loadBaseline]);
 
   useEffect(() => {
     void loadBaseline();
@@ -150,16 +168,45 @@ function App() {
                 setParseError(error);
                 setSaveError(null);
                 setSaveResult(null);
+                setIsCorrectionOpen(false);
+                setCorrectionMap({});
               }}
               onAttemptSave={runSaveAttempt}
               saveBlockedReasons={saveBlockedReasons}
               isSaving={isSaving}
             />
             <ReadinessStatus
-              preview={parsePreview}
+              preview={correctedPreview}
               error={parseError}
               saveError={saveError}
               saveResult={saveResult}
+              blockedFields={blockedFields}
+              onOpenCorrection={() => {
+                if (blockedFields.length > 0) {
+                  setIsCorrectionOpen(true);
+                }
+              }}
+              hasCorrectionsApplied={hasCorrectionsApplied}
+            />
+            <CorrectionPanel
+              isOpen={isCorrectionOpen}
+              blockedFields={blockedFields}
+              preview={correctedPreview}
+              correctionValues={correctionMap}
+              onCorrectionChange={(field, value) => {
+                setCorrectionMap((current) => ({
+                  ...current,
+                  [field]: value,
+                }));
+                setSaveError(null);
+                setSaveResult(null);
+              }}
+              onApply={() => {
+                setIsCorrectionOpen(false);
+              }}
+              onClose={() => {
+                setIsCorrectionOpen(false);
+              }}
             />
           </section>
           <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />

@@ -3,7 +3,7 @@
 ## Metadata
 - Story Key: 2-3-guided-correction-and-retry-flow
 - Epic: Epic 2 - Capture Transactions with Safe Validation and Corrections
-- Status: ready-for-dev
+- Status: review
 - Created: 2026-05-14T00:00:00+05:30
 - Last Updated: 2026-05-14T00:40:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
@@ -21,24 +21,24 @@ So that I can recover quickly and complete capture safely.
 
 ## Tasks / Subtasks
 
-- [ ] Add focused correction workflow in capture UI (AC: 1)
-  - [ ] Create `app/src/features/capture/components/CorrectionPanel.tsx` for field-level correction controls.
-  - [ ] Render only currently blocked critical fields using `deriveBlockedFieldReasons` outputs.
-  - [ ] Show deterministic, actionable hints per field from existing blocked-reason guidance.
-  - [ ] Keep keyboard-first behavior (predictable tab flow, Enter to apply, Escape to close).
-- [ ] Add real-time correction validation and retry orchestration (AC: 1)
-  - [ ] Extend capture state orchestration in `app/src/App.tsx` to hold corrected values without losing parse context.
-  - [ ] Recompute blocked fields immediately after each correction edit.
-  - [ ] Enable save retry only when all critical fields are valid.
-  - [ ] Reuse existing `attemptTransactionSave` command path; do not add new backend command in this story.
-- [ ] Integrate correction visibility into readiness surfaces (AC: 1)
-  - [ ] Update `ReadinessStatus` to expose correction entry points only when blocked fields exist.
-  - [ ] Keep parse and save status communication using non-color cues.
-- [ ] Add deterministic regression coverage (AC: 1)
-  - [ ] Extend `app/src/features/capture/capture.test.tsx` with correction flow tests.
-  - [ ] Verify blocked fields shrink deterministically as fields are corrected.
-  - [ ] Verify save retry is unavailable until all critical fields are valid.
-  - [ ] Preserve all existing Story 2.1 and 2.2 tests unchanged.
+- [x] Add focused correction workflow in capture UI (AC: 1)
+  - [x] Create `app/src/features/capture/components/CorrectionPanel.tsx` for field-level correction controls.
+  - [x] Render only currently blocked critical fields using `deriveBlockedFieldReasons` outputs.
+  - [x] Show deterministic, actionable hints per field from existing blocked-reason guidance.
+  - [x] Keep keyboard-first behavior (predictable tab flow, Enter to apply, Escape to close).
+- [x] Add real-time correction validation and retry orchestration (AC: 1)
+  - [x] Extend capture state orchestration in `app/src/App.tsx` to hold corrected values without losing parse context.
+  - [x] Recompute blocked fields immediately after each correction edit.
+  - [x] Enable save retry only when all critical fields are valid.
+  - [x] Reuse existing `attemptTransactionSave` command path; do not add new backend command in this story.
+- [x] Integrate correction visibility into readiness surfaces (AC: 1)
+  - [x] Update `ReadinessStatus` to expose correction entry points only when blocked fields exist.
+  - [x] Keep parse and save status communication using non-color cues.
+- [x] Add deterministic regression coverage (AC: 1)
+  - [x] Extend `app/src/features/capture/capture.test.tsx` with correction flow tests.
+  - [x] Verify blocked fields shrink deterministically as fields are corrected.
+  - [x] Verify save retry is unavailable until all critical fields are valid.
+  - [x] Preserve all existing Story 2.1 and 2.2 tests unchanged.
 
 ## Dev Notes
 
@@ -178,8 +178,8 @@ So that I can recover quickly and complete capture safely.
 - `app/src-tauri/src/commands/capture.rs`
 
 ## Story Completion Status
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Guided correction and retry flow implemented with deterministic blocked-field recomputation and full regression validation.
 
 ## Dev Agent Record
 
@@ -190,10 +190,25 @@ GPT-5.3-Codex
 - Workflow activation and artifact discovery completed.
 - Full sprint status parsed; story selected from Epic 2 backlog set.
 - Existing code paths inspected for frontend and Rust capture flow.
+- Implemented correction panel and schema-backed in-memory correction orchestration in capture UI.
+- Ran `pnpm test -- src/features/capture/capture.test.tsx`, `pnpm test`, and `pnpm build` successfully.
 
 ### Completion Notes List
 - Created story context with explicit update-file guardrails, deterministic correction rules, and regression test requirements.
 - Added deterministic negative-path test scenarios covering repeated invalid corrections, retry-failure determinism, and non-mutation guarantees.
+- Added focused `CorrectionPanel` with blocked-only field rendering, hint guidance, and keyboard-first controls (Enter apply, Escape close).
+- Added correction payload helpers in schema and wired App orchestration to recompute blocked fields immediately on edits.
+- Updated readiness surface to expose guided correction entry only when blocked fields exist and preserve non-color state communication.
+- Extended capture regression tests for correction visibility, deterministic blocked-field shrinking, and save retry gating.
 
 ### File List
+- app/src/App.tsx
+- app/src/features/capture/schema.ts
+- app/src/features/capture/components/CorrectionPanel.tsx
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/capture.test.tsx
+- _bmad-output/implementation-artifacts/sprint-status.yaml
 - _bmad-output/implementation-artifacts/2-3-guided-correction-and-retry-flow.md
+
+## Change Log
+- 2026-05-14: Implemented guided correction panel, in-memory correction orchestration, readiness integration, and deterministic correction/retry regression tests for Story 2.3.

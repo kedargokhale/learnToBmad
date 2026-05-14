@@ -1,4 +1,5 @@
 import {
+  type BlockedFieldReason,
   blockedFieldReasonSchema,
   computeReadinessLabel,
   getFieldDisplayName,
@@ -17,6 +18,9 @@ type ReadinessStatusProps = {
   error: CommandError | null;
   saveError: CommandError | null;
   saveResult: SaveTransactionAttemptData | null;
+  blockedFields: ReadonlyArray<BlockedFieldReason>;
+  onOpenCorrection: () => void;
+  hasCorrectionsApplied: boolean;
 };
 
 export function ReadinessStatus({
@@ -24,6 +28,9 @@ export function ReadinessStatus({
   error,
   saveError,
   saveResult,
+  blockedFields,
+  onOpenCorrection,
+  hasCorrectionsApplied,
 }: ReadinessStatusProps) {
   const parsedPreview = preview ? parsePreviewSchema.safeParse(preview) : null;
   
@@ -45,7 +52,7 @@ export function ReadinessStatus({
 
   const blockedFieldsRaw = saveError?.details?.blockedFields;
   const blockedFieldParse = blockedFieldReasonSchema.array().safeParse(blockedFieldsRaw);
-  const blockedFields = blockedFieldParse.success ? blockedFieldParse.data : [];
+  const saveBlockedFields = blockedFieldParse.success ? blockedFieldParse.data : [];
 
   if (error) {
     return (
@@ -107,19 +114,39 @@ export function ReadinessStatus({
 
       {viewModel.readinessState !== "ready" ? (
         <div className="blocked-reasons">
-          Saving is intentionally disabled in this story phase. Review missing fields and re-paste the source message.
+          Saving stays blocked until all critical fields are valid. Open guided corrections to edit only blocked fields.
+          {blockedFields.length > 0 ? (
+            <ul aria-label="Current blocked field list">
+              {blockedFields.map((item) => (
+                <li key={`${item.field}-${item.reason}`}>
+                  {getFieldDisplayName(item.field)}: {item.reason === "missing" ? "missing" : "ambiguous"}. {item.hint}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {blockedFields.length > 0 ? (
+            <div className="submit-row">
+              <button className="secondary-action" type="button" onClick={onOpenCorrection}>
+                Open guided corrections
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="hint">Parse preview is ready. Save validation is available and runs before any write attempt.</div>
       )}
 
+      {hasCorrectionsApplied ? (
+        <div className="hint">Correction values are active in-memory and will be used for save retry validation.</div>
+      ) : null}
+
       {saveError ? (
         <div className="status-banner" role="alert">
           <strong>{saveError.message}</strong>
           {saveError.hint ? <div>{saveError.hint}</div> : null}
-          {blockedFields.length > 0 ? (
+          {saveBlockedFields.length > 0 ? (
             <ul className="capture-field-list" aria-label="Blocked fields from save validation">
-              {blockedFields.map((item) => (
+              {saveBlockedFields.map((item) => (
                 <li key={`${item.field}-${item.reason}`} className="history-item">
                   <div>
                     <strong>{getFieldDisplayName(item.field)}</strong>
