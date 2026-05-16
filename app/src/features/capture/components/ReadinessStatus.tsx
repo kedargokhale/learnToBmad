@@ -1,12 +1,17 @@
 import {
+  type AccountMismatchResolution,
   type BlockedFieldReason,
   blockedFieldReasonSchema,
   computeReadinessLabel,
+  type DuplicateDecision,
   getFieldDisplayName,
   formatCurrency,
   parsePreviewSchema,
+  saveGateDecisionDetailsSchema,
   type ParsePreviewViewModel,
 } from "../schema";
+import { AccountMismatchResolver } from "./AccountMismatchResolver";
+import { DuplicateFlagIndicator } from "./DuplicateFlagIndicator";
 import type {
   CommandError,
   ParsePreviewData,
@@ -21,6 +26,18 @@ type ReadinessStatusProps = {
   blockedFields: ReadonlyArray<BlockedFieldReason>;
   onOpenCorrection: () => void;
   hasCorrectionsApplied: boolean;
+  mismatchResolution: AccountMismatchResolution | null;
+  duplicateDecision: DuplicateDecision | null;
+  onMismatchResolutionChange: (value: AccountMismatchResolution) => void;
+  onDuplicateDecisionChange: (value: DuplicateDecision) => void;
+  preflightAccountMismatch?: {
+    detected: boolean;
+    requiresResolution: boolean;
+    parsedBankName?: string | null;
+    parsedAccountNumber?: string | null;
+    selectedBankName: string;
+    selectedAccountNumber: string;
+  } | null;
 };
 
 export function ReadinessStatus({
@@ -31,6 +48,11 @@ export function ReadinessStatus({
   blockedFields,
   onOpenCorrection,
   hasCorrectionsApplied,
+  mismatchResolution,
+  duplicateDecision,
+  onMismatchResolutionChange,
+  onDuplicateDecisionChange,
+  preflightAccountMismatch,
 }: ReadinessStatusProps) {
   const parsedPreview = preview ? parsePreviewSchema.safeParse(preview) : null;
   
@@ -53,6 +75,10 @@ export function ReadinessStatus({
   const blockedFieldsRaw = saveError?.details?.blockedFields;
   const blockedFieldParse = blockedFieldReasonSchema.array().safeParse(blockedFieldsRaw);
   const saveBlockedFields = blockedFieldParse.success ? blockedFieldParse.data : [];
+  const saveGateDetailsParse = saveGateDecisionDetailsSchema.safeParse(saveError?.details);
+  const saveGateDetails = saveGateDetailsParse.success ? saveGateDetailsParse.data : null;
+  const accountMismatchSignal = saveGateDetails?.accountMismatch ?? preflightAccountMismatch;
+  const duplicateCandidateSignal = saveGateDetails?.duplicateCandidate;
 
   if (error) {
     return (
@@ -144,6 +170,16 @@ export function ReadinessStatus({
         <div className="status-banner" role="alert">
           <strong>{saveError.message}</strong>
           {saveError.hint ? <div>{saveError.hint}</div> : null}
+          {accountMismatchSignal?.detected ? (
+            <div>
+              Non-color cue: Account mismatch resolution is required before save validation can proceed.
+            </div>
+          ) : null}
+          {duplicateCandidateSignal?.detected ? (
+            <div>
+              Non-color cue: Duplicate decision is required before save validation can proceed.
+            </div>
+          ) : null}
           {saveBlockedFields.length > 0 ? (
             <ul className="capture-field-list" aria-label="Blocked fields from save validation">
               {saveBlockedFields.map((item) => (
@@ -160,12 +196,32 @@ export function ReadinessStatus({
         </div>
       ) : null}
 
+      {accountMismatchSignal?.detected ? (
+        <AccountMismatchResolver
+          value={mismatchResolution}
+          parsedBankName={accountMismatchSignal.parsedBankName}
+          parsedAccountNumber={accountMismatchSignal.parsedAccountNumber}
+          selectedBankName={accountMismatchSignal.selectedBankName}
+          selectedAccountNumber={accountMismatchSignal.selectedAccountNumber}
+          onChange={onMismatchResolutionChange}
+        />
+      ) : null}
+
+      {duplicateCandidateSignal?.detected ? (
+        <DuplicateFlagIndicator
+          value={duplicateDecision}
+          reason={duplicateCandidateSignal.reason}
+          fingerprint={duplicateCandidateSignal.fingerprint}
+          onChange={onDuplicateDecisionChange}
+        />
+      ) : null}
+
       {saveResult ? (
         <div className="success-banner" role="status">
           <strong>Save gate result: {saveResult.validationState}</strong>
           <div>{saveResult.message}</div>
           <div>
-            Deterministic scope note: validation passed, but write persistence remains disabled in this story.
+            Deterministic scope note: validation passed, but no transaction row is written in this story phase.
           </div>
         </div>
       ) : null}

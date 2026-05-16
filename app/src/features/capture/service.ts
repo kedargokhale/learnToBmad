@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { CommandEnvelope, CommandError } from "../ledger/service";
-import type { BlockedFieldReason } from "./schema";
+import type {
+  AccountMismatchResolution,
+  BlockedFieldReason,
+  DuplicateDecision,
+} from "./schema";
 
 export type ParseTransactionPayload = {
   message: string;
@@ -38,6 +42,8 @@ export type SaveAccountContext = {
 export type SaveTransactionAttemptPayload = {
   accountContext: SaveAccountContext;
   parsedPayload: ParsePreviewData;
+  mismatchResolution: AccountMismatchResolution | null;
+  duplicateDecision: DuplicateDecision | null;
 };
 
 export type SaveTransactionAttemptData = {

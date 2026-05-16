@@ -11,12 +11,15 @@ import {
   type SaveTransactionAttemptData,
 } from "./features/capture/service";
 import {
+  type AccountMismatchResolution,
   applyCorrectionMap,
   correctionMapSchema,
   deriveReadinessStateFromBlockedFields,
   deriveBlockedFieldReasons,
+  type DuplicateDecision,
   getFieldDisplayName,
   parsePreviewSchema,
+  saveGateDecisionDetailsSchema,
   type BlockedFieldReason,
 } from "./features/capture/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
@@ -26,6 +29,14 @@ import {
   type LedgerBaselineData,
 } from "./features/ledger/service";
 import "./App.css";
+
+function normalizeCompareText(value: string): string {
+  return value
+    .split("")
+    .filter((character) => /[a-z0-9]/i.test(character))
+    .map((character) => character.toUpperCase())
+    .join("");
+}
 
 function UnsupportedRuntimeScreen() {
   return (
@@ -54,6 +65,8 @@ function App() {
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
+  const [duplicateDecision, setDuplicateDecision] = useState<DuplicateDecision | null>(null);
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
@@ -68,10 +81,49 @@ function App() {
   const blockedFields = parseError
     ? deriveBlockedFieldReasons(null)
     : deriveBlockedFieldReasons(correctedPreview);
+  const saveGateDetailsParse = saveGateDecisionDetailsSchema.safeParse(saveError?.details);
+  const saveGateDetails = saveGateDetailsParse.success ? saveGateDetailsParse.data : null;
+
+  const localParsedBank = correctedPreview?.bankName?.trim();
+  const localParsedAccount = correctedPreview?.accountNumber?.trim();
+  const localSelectedBank = baseline?.account?.bankName?.trim();
+  const localSelectedAccount = baseline?.account?.accountNumber?.trim();
+  const localMismatchDetected = Boolean(
+    baseline?.account &&
+      ((localParsedBank &&
+        localSelectedBank &&
+        normalizeCompareText(localParsedBank) !== normalizeCompareText(localSelectedBank)) ||
+        (localParsedAccount &&
+          localSelectedAccount &&
+          normalizeCompareText(localParsedAccount) !== normalizeCompareText(localSelectedAccount))),
+  );
+
+  const preflightAccountMismatch = baseline?.account
+    ? {
+        detected: localMismatchDetected,
+        requiresResolution: localMismatchDetected,
+        parsedBankName: correctedPreview?.bankName ?? null,
+        parsedAccountNumber: correctedPreview?.accountNumber ?? null,
+        selectedBankName: baseline.account.bankName,
+        selectedAccountNumber: baseline.account.accountNumber,
+      }
+    : null;
+  const requiresMismatchResolution = Boolean(saveGateDetails?.accountMismatch?.detected);
+  const requiresDuplicateDecision = Boolean(saveGateDetails?.duplicateCandidate?.detected);
+  const decisionBlockedReasons: string[] = [];
+
+  if (requiresMismatchResolution && !mismatchResolution) {
+    decisionBlockedReasons.push("Account mismatch detected: choose a mismatch resolution to continue.");
+  }
+
+  if (requiresDuplicateDecision && !duplicateDecision) {
+    decisionBlockedReasons.push("Possible duplicate detected: choose a duplicate decision to continue.");
+  }
+
   const saveBlockedReasons = blockedFields.map((item) => {
     const reasonLabel = item.reason === "missing" ? "missing" : "ambiguous";
     return `${getFieldDisplayName(item.field)}: ${reasonLabel}. ${item.hint}`;
-  });
+  }).concat(decisionBlockedReasons);
   const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
   const loadBaseline = useCallback(async () => {
@@ -101,7 +153,12 @@ function App() {
   }, []);
 
   const runSaveAttempt = useCallback(async () => {
-    if (!baseline?.account || !correctedPreview || blockedFields.length > 0) {
+    if (
+      !baseline?.account ||
+      !correctedPreview ||
+      blockedFields.length > 0 ||
+      decisionBlockedReasons.length > 0
+    ) {
       return;
     }
 
@@ -120,6 +177,8 @@ function App() {
           ...correctedPreview,
           readinessState: deriveReadinessStateFromBlockedFields(blockedFields),
         },
+        mismatchResolution,
+        duplicateDecision,
       });
 
       if (!result.ok) {
@@ -141,7 +200,15 @@ function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [baseline, blockedFields, correctedPreview, loadBaseline]);
+  }, [
+    baseline,
+    blockedFields,
+    correctedPreview,
+    decisionBlockedReasons.length,
+    duplicateDecision,
+    loadBaseline,
+    mismatchResolution,
+  ]);
 
   useEffect(() => {
     void loadBaseline();
@@ -169,6 +236,8 @@ function App() {
                 setSaveError(null);
                 setSaveResult(null);
                 setIsCorrectionOpen(false);
+                setMismatchResolution(null);
+                setDuplicateDecision(null);
                 setCorrectionMap({});
               }}
               onAttemptSave={runSaveAttempt}
@@ -187,6 +256,17 @@ function App() {
                 }
               }}
               hasCorrectionsApplied={hasCorrectionsApplied}
+              mismatchResolution={mismatchResolution}
+              duplicateDecision={duplicateDecision}
+              onMismatchResolutionChange={(value) => {
+                setMismatchResolution(value);
+                setSaveResult(null);
+              }}
+              onDuplicateDecisionChange={(value) => {
+                setDuplicateDecision(value);
+                setSaveResult(null);
+              }}
+              preflightAccountMismatch={preflightAccountMismatch}
             />
             <CorrectionPanel
               isOpen={isCorrectionOpen}

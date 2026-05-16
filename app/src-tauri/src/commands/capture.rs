@@ -33,6 +33,20 @@ pub struct SaveAccountContext {
     pub account_number: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AccountMismatchResolution {
+    UseSelectedAccount,
+    UseParsedAccount,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DuplicateDecision {
+    SaveAsNew,
+    SkipSave,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTransactionParsedPayload {
@@ -52,6 +66,8 @@ pub struct SaveTransactionParsedPayload {
 pub struct SaveTransactionAttemptRequest {
     pub account_context: SaveAccountContext,
     pub parsed_payload: SaveTransactionParsedPayload,
+    pub mismatch_resolution: Option<AccountMismatchResolution>,
+    pub duplicate_decision: Option<DuplicateDecision>,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,6 +76,26 @@ pub struct BlockedFieldIssue {
     pub field: &'static str,
     pub reason: &'static str,
     pub hint: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountMismatchSignal {
+    pub detected: bool,
+    pub requires_resolution: bool,
+    pub parsed_bank_name: Option<String>,
+    pub parsed_account_number: Option<String>,
+    pub selected_bank_name: String,
+    pub selected_account_number: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateCandidateSignal {
+    pub detected: bool,
+    pub requires_decision: bool,
+    pub reason: Option<String>,
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -247,6 +283,25 @@ fn validate_save_request(
         &mut blocked_fields,
     );
 
+    let account_mismatch_signal = detect_account_mismatch_signal(payload);
+    let duplicate_candidate_signal = detect_duplicate_candidate_signal(parsed);
+
+    if account_mismatch_signal.detected && payload.mismatch_resolution.is_none() {
+        blocked_fields.push(BlockedFieldIssue {
+            field: "accountNumber",
+            reason: "ambiguous",
+            hint: "Account mismatch detected. Choose a mismatch resolution before retrying save.",
+        });
+    }
+
+    if duplicate_candidate_signal.detected && payload.duplicate_decision.is_none() {
+        blocked_fields.push(BlockedFieldIssue {
+            field: "merchantOrPayee",
+            reason: "ambiguous",
+            hint: "Possible duplicate detected. Choose a duplicate decision before retrying save.",
+        });
+    }
+
     if blocked_fields.is_empty() {
         return None;
     }
@@ -261,9 +316,85 @@ fn validate_save_request(
             details: Some(json!({
                 "blockedFields": blocked_fields,
                 "nextAction": "Fix the listed fields and retry save.",
+                "accountMismatch": account_mismatch_signal,
+                "duplicateCandidate": duplicate_candidate_signal,
             })),
         }),
     })
+}
+
+fn detect_account_mismatch_signal(payload: &SaveTransactionAttemptRequest) -> AccountMismatchSignal {
+    let parsed_bank = payload.parsed_payload.bank_name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty());
+    let parsed_account = payload
+        .parsed_payload
+        .account_number
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+
+    let selected_bank_norm = normalize_compare_text(&payload.account_context.bank_name);
+    let selected_account_norm = normalize_compare_text(&payload.account_context.account_number);
+    let parsed_bank_norm = parsed_bank.map(normalize_compare_text);
+    let parsed_account_norm = parsed_account.map(normalize_compare_text);
+
+    let bank_mismatch = parsed_bank_norm
+        .as_deref()
+        .map(|value| value != selected_bank_norm)
+        .unwrap_or(false);
+    let account_mismatch = parsed_account_norm
+        .as_deref()
+        .map(|value| value != selected_account_norm)
+        .unwrap_or(false);
+    let detected = bank_mismatch || account_mismatch;
+
+    AccountMismatchSignal {
+        detected,
+        requires_resolution: detected,
+        parsed_bank_name: parsed_bank.map(|value| value.to_string()),
+        parsed_account_number: parsed_account.map(|value| value.to_string()),
+        selected_bank_name: payload.account_context.bank_name.clone(),
+        selected_account_number: payload.account_context.account_number.clone(),
+    }
+}
+
+fn detect_duplicate_candidate_signal(parsed: &SaveTransactionParsedPayload) -> DuplicateCandidateSignal {
+    let normalized = parsed.normalized_text.to_ascii_lowercase();
+    let markers = [
+        "duplicate",
+        "already processed",
+        "already paid",
+        "already done",
+        "repeat transaction",
+    ];
+    let detected = markers.iter().any(|marker| normalized.contains(marker));
+
+    let fingerprint = format!(
+        "{}|{}|{}|{}|{}",
+        parsed.amount_minor.unwrap_or_default(),
+        parsed.direction.as_deref().unwrap_or("unknown"),
+        parsed.transaction_date.as_deref().unwrap_or("unknown"),
+        normalize_compare_text(parsed.account_number.as_deref().unwrap_or("unknown")),
+        normalize_compare_text(parsed.merchant_or_payee.as_deref().unwrap_or("unknown")),
+    );
+
+    DuplicateCandidateSignal {
+        detected,
+        requires_decision: detected,
+        reason: if detected {
+            Some("Message contains duplicate marker text.".to_string())
+        } else {
+            None
+        },
+        fingerprint,
+    }
+}
+
+fn normalize_compare_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect()
 }
 
 fn validate_required_text_field(
@@ -1135,6 +1266,8 @@ mod tests {
                     merchant_or_payee: None,
                     readiness_state: Some("needs-review".to_string()),
                 },
+                mismatch_resolution: None,
+                duplicate_decision: None,
             },
         )
         .await;
@@ -1185,6 +1318,8 @@ mod tests {
                 merchant_or_payee: Some("ambiguous".to_string()),
                 readiness_state: Some("ready".to_string()),
             },
+            mismatch_resolution: None,
+            duplicate_decision: None,
         };
 
         let first = attempt_transaction_save_with_pool(&pool, request).await;
@@ -1208,6 +1343,8 @@ mod tests {
                     merchant_or_payee: Some("ambiguous".to_string()),
                     readiness_state: Some("ready".to_string()),
                 },
+                mismatch_resolution: None,
+                duplicate_decision: None,
             },
         )
         .await;
@@ -1247,6 +1384,8 @@ mod tests {
                     merchant_or_payee: Some("BigBazaar".to_string()),
                     readiness_state: Some("ready".to_string()),
                 },
+                mismatch_resolution: None,
+                duplicate_decision: None,
             },
         )
         .await;
@@ -1269,6 +1408,145 @@ mod tests {
 
         let after = table_counts(&pool).await;
         assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn blocks_save_until_account_mismatch_resolution_is_provided() {
+        let pool = setup_pool().await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "sample".to_string(),
+                    normalized_text: "sample".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("ICICI Bank".to_string()),
+                    account_number: Some("XX9999".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        assert!(!result.ok);
+        let error = result.error.expect("validation error expected");
+        let details = error.details.expect("details should exist");
+        let mismatch_detected = details
+            .get("accountMismatch")
+            .and_then(|value| value.get("detected"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        assert!(mismatch_detected);
+    }
+
+    #[tokio::test]
+    async fn blocks_save_until_duplicate_decision_is_provided() {
+        let pool = setup_pool().await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "duplicate message".to_string(),
+                    normalized_text: "possible duplicate already processed message".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        assert!(!result.ok);
+        let error = result.error.expect("validation error expected");
+        let details = error.details.expect("details should exist");
+        let duplicate_detected = details
+            .get("duplicateCandidate")
+            .and_then(|value| value.get("detected"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        assert!(duplicate_detected);
+    }
+
+    #[tokio::test]
+    async fn requires_both_decisions_when_both_signals_are_present() {
+        let pool = setup_pool().await;
+
+        let blocked_with_partial_decisions = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "duplicate message".to_string(),
+                    normalized_text: "possible duplicate already processed message".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("ICICI Bank".to_string()),
+                    account_number: Some("XX9999".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: Some("use-selected-account".to_string()),
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        assert!(!blocked_with_partial_decisions.ok);
+
+        let fully_resolved = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "duplicate message".to_string(),
+                    normalized_text: "possible duplicate already processed message".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("ICICI Bank".to_string()),
+                    account_number: Some("XX9999".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: Some("use-selected-account".to_string()),
+                duplicate_decision: Some("save-as-new".to_string()),
+            },
+        )
+        .await;
+
+        assert!(fully_resolved.ok);
     }
 
 

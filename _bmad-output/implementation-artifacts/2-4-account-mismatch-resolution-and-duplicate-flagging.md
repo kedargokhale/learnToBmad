@@ -3,7 +3,7 @@
 ## Metadata
 - Story Key: 2-4-account-mismatch-resolution-and-duplicate-flagging
 - Epic: Epic 2 - Capture Transactions with Safe Validation and Corrections
-- Status: ready-for-dev
+- Status: review
 - Created: 2026-05-14T00:00:00+05:30
 - Last Updated: 2026-05-14T00:00:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
@@ -19,23 +19,23 @@ So that I can avoid silent ledger corruption.
 
 ## Tasks / Subtasks
 
-- [ ] Add mismatch and duplicate decision contracts to save-attempt flow (AC: 1, 2)
-  - [ ] Extend `SaveTransactionAttemptPayload` to carry explicit mismatch resolution and duplicate decision values.
-  - [ ] Ensure payload fields are typed and deterministic in `app/src/features/capture/service.ts`.
-- [ ] Implement backend mismatch + duplicate detection in validation gate (AC: 1, 2)
-  - [ ] Update `app/src-tauri/src/commands/capture.rs` save-attempt logic to detect account mismatch conditions.
-  - [ ] Add deterministic duplicate candidate detection using stable ruleset.
-  - [ ] Return structured blocking details for unresolved mismatch/duplicate decisions.
-  - [ ] Keep this story as validation and decision-gating only; do not persist write rows yet.
-- [ ] Implement explicit frontend resolution UX (AC: 1, 2)
-  - [ ] Create `app/src/features/capture/components/AccountMismatchResolver.tsx`.
-  - [ ] Create `app/src/features/capture/components/DuplicateFlagIndicator.tsx`.
-  - [ ] Update `ReadinessStatus` and/or `App.tsx` to enforce composite rule: mismatch and duplicate decisions both required when both signals exist.
-  - [ ] Keep messaging deterministic and non-color-only.
-- [ ] Add deterministic regression coverage (AC: 1, 2)
-  - [ ] Extend `app/src/features/capture/capture.test.tsx` for mismatch-only, duplicate-only, and both-signals scenarios.
-  - [ ] Add Rust tests for deterministic mismatch detection and duplicate flagging outputs.
-  - [ ] Preserve all Story 2.1, 2.2, and 2.3 test behavior unchanged.
+- [x] Add mismatch and duplicate decision contracts to save-attempt flow (AC: 1, 2)
+  - [x] Extend `SaveTransactionAttemptPayload` to carry explicit mismatch resolution and duplicate decision values.
+  - [x] Ensure payload fields are typed and deterministic in `app/src/features/capture/service.ts`.
+- [x] Implement backend mismatch + duplicate detection in validation gate (AC: 1, 2)
+  - [x] Update `app/src-tauri/src/commands/capture.rs` save-attempt logic to detect account mismatch conditions.
+  - [x] Add deterministic duplicate candidate detection using stable ruleset.
+  - [x] Return structured blocking details for unresolved mismatch/duplicate decisions.
+  - [x] Keep this story as validation and decision-gating only; do not persist write rows yet.
+- [x] Implement explicit frontend resolution UX (AC: 1, 2)
+  - [x] Create `app/src/features/capture/components/AccountMismatchResolver.tsx`.
+  - [x] Create `app/src/features/capture/components/DuplicateFlagIndicator.tsx`.
+  - [x] Update `ReadinessStatus` and/or `App.tsx` to enforce composite rule: mismatch and duplicate decisions both required when both signals exist.
+  - [x] Keep messaging deterministic and non-color-only.
+- [x] Add deterministic regression coverage (AC: 1, 2)
+  - [x] Extend `app/src/features/capture/capture.test.tsx` for mismatch-only, duplicate-only, and both-signals scenarios.
+  - [x] Add Rust tests for deterministic mismatch detection and duplicate flagging outputs.
+  - [x] Preserve all Story 2.1, 2.2, and 2.3 test behavior unchanged.
 
 ## Dev Notes
 
@@ -177,8 +177,8 @@ So that I can avoid silent ledger corruption.
 - `app/src/features/capture/capture.test.tsx`
 
 ## Story Completion Status
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Story implementation completed with deterministic mismatch/duplicate decision gating and full frontend/backend regression coverage.
 
 ## Dev Agent Record
 
@@ -188,9 +188,31 @@ GPT-5.3-Codex
 ### Debug Log References
 - Workflow activation and artifact discovery completed.
 - Epic 2 backlog stories analyzed end-to-end with current codebase constraints.
+- Updated sprint status to in-progress and executed Story 2.4 implementation sequence.
+- Implemented frontend mismatch/duplicate decision contracts and UI resolution components.
+- Implemented backend account mismatch and duplicate candidate detection with structured blocking details.
+- Executed `pnpm test` in app workspace: all 24 tests passing.
+- Executed `cargo test` in src-tauri workspace: all 29 tests passing.
 
 ### Completion Notes List
 - Created story context with deterministic mismatch/duplicate guardrails and composite decision rules.
+- Added typed decision contracts in capture schema/service for mismatch and duplicate handling.
+- Added `AccountMismatchResolver` and `DuplicateFlagIndicator` components and wired them into readiness/save gating UX.
+- Added backend decision-gating signals (`accountMismatch`, `duplicateCandidate`) with deterministic fingerprints and explicit decision requirements.
+- Added frontend regression tests for mismatch-only, duplicate-only, and both-signals gating scenarios.
+- Added Rust regression tests for mismatch detection, duplicate detection, and composite decision requirements.
 
 ### File List
 - _bmad-output/implementation-artifacts/2-4-account-mismatch-resolution-and-duplicate-flagging.md
+- app/src/features/capture/schema.ts
+- app/src/features/capture/service.ts
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/components/AccountMismatchResolver.tsx
+- app/src/features/capture/components/DuplicateFlagIndicator.tsx
+- app/src/features/capture/capture.test.tsx
+- app/src/App.tsx
+- app/src-tauri/src/commands/capture.rs
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+- 2026-05-16: Implemented Story 2.4 mismatch/duplicate decision gating across frontend and backend; added deterministic tests; moved story status to review.

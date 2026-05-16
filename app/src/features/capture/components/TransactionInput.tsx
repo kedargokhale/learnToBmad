@@ -131,9 +131,9 @@ export function TransactionInput({
             void onAttemptSave();
           }}
         >
-          {isSaving ? "Validating save..." : "Save transaction"}
+          {isSaving ? "Validating save..." : "Run save validation"}
         </button>
-        <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data.</div>
+        <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data. In this story scope, save runs validation only and does not persist a transaction row.</div>
       </div>
 
       {saveBlockedReasons.length > 0 ? (
@@ -146,7 +146,7 @@ export function TransactionInput({
           </ul>
         </div>
       ) : (
-        <div className="hint">Save validation gate is available. Use Save transaction to run a deterministic validation check.</div>
+        <div className="hint">Save validation gate is available. Use Run save validation to execute a deterministic check only (no write yet).</div>
       )}
     </section>
   );

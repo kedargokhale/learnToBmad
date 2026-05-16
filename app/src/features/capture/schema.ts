@@ -19,6 +19,39 @@ export const blockedFieldReasonSchema = z.object({
 
 export const correctionMapSchema = z.partialRecord(criticalFieldSchema, z.string());
 
+export const accountMismatchResolutionSchema = z.enum([
+  "use-selected-account",
+  "use-parsed-account",
+]);
+
+export const duplicateDecisionSchema = z.enum([
+  "save-as-new",
+  "skip-save",
+]);
+
+export const saveGateDecisionDetailsSchema = z.object({
+  blockedFields: blockedFieldReasonSchema.array().default([]),
+  nextAction: z.string().optional(),
+  accountMismatch: z
+    .object({
+      detected: z.boolean(),
+      requiresResolution: z.boolean(),
+      parsedBankName: z.string().nullable().optional(),
+      parsedAccountNumber: z.string().nullable().optional(),
+      selectedBankName: z.string(),
+      selectedAccountNumber: z.string(),
+    })
+    .optional(),
+  duplicateCandidate: z
+    .object({
+      detected: z.boolean(),
+      requiresDecision: z.boolean(),
+      reason: z.string().optional(),
+      fingerprint: z.string().optional(),
+    })
+    .optional(),
+});
+
 export const criticalFieldOrder = criticalFieldSchema.options;
 
 export const parsePreviewSchema = z.object({
@@ -36,6 +69,9 @@ export const parsePreviewSchema = z.object({
 export type ParsePreviewViewModel = z.infer<typeof parsePreviewSchema>;
 export type BlockedFieldReason = z.infer<typeof blockedFieldReasonSchema>;
 export type CorrectionMap = z.infer<typeof correctionMapSchema>;
+export type AccountMismatchResolution = z.infer<typeof accountMismatchResolutionSchema>;
+export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;
+export type SaveGateDecisionDetails = z.infer<typeof saveGateDecisionDetailsSchema>;
 
 export function formatCurrency(amountMinor: number | null): string {
   if (amountMinor === null) return "-";
