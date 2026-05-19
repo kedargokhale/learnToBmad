@@ -20,6 +20,7 @@ import {
   getFieldDisplayName,
   parsePreviewSchema,
   saveGateDecisionDetailsSchema,
+  type SaveLifecycleState,
   type BlockedFieldReason,
 } from "./features/capture/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
@@ -63,6 +64,7 @@ function App() {
   const [parseError, setParseError] = useState<CommandError | null>(null);
   const [saveError, setSaveError] = useState<CommandError | null>(null);
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
+  const [saveLifecycleState, setSaveLifecycleState] = useState<SaveLifecycleState>("idle");
   const [isSaving, setIsSaving] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
@@ -126,12 +128,15 @@ function App() {
   }).concat(decisionBlockedReasons);
   const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
-  const loadBaseline = useCallback(async () => {
+  const loadBaseline = useCallback(async (failOnError = false) => {
     setIsLoading(true);
 
     try {
       const result = await getLedgerBaseline();
       if (!result.ok) {
+        if (failOnError) {
+          throw new Error("Failed to refresh ledger baseline from persisted data.");
+        }
         setBaseline({
           account: null,
           entries: [],
@@ -142,6 +147,9 @@ function App() {
 
       setBaseline(result.data);
     } catch {
+      if (failOnError) {
+        throw new Error("Failed to refresh ledger baseline from persisted data.");
+      }
       setBaseline({
         account: null,
         entries: [],
@@ -159,14 +167,17 @@ function App() {
       blockedFields.length > 0 ||
       decisionBlockedReasons.length > 0
     ) {
+      setSaveLifecycleState("blocked");
       return;
     }
 
     setIsSaving(true);
+    setSaveLifecycleState("validating");
     setSaveError(null);
     setSaveResult(null);
 
     try {
+      setSaveLifecycleState("persisting");
       const result = await attemptTransactionSave({
         accountContext: {
           accountId: baseline.account.id,
@@ -182,6 +193,7 @@ function App() {
       });
 
       if (!result.ok) {
+        setSaveLifecycleState("failed");
         setSaveError(result.error);
         return;
       }
@@ -189,13 +201,16 @@ function App() {
       setSaveResult(result.data);
 
       if (result.data.acceptedForWrite) {
-        await loadBaseline();
+        await loadBaseline(true);
       }
+
+      setSaveLifecycleState("success");
     } catch {
+      setSaveLifecycleState("failed");
       setSaveError({
         code: "PERSISTENCE_ERROR",
-        message: "Save validation failed before a deterministic result was produced.",
-        hint: "Retry save validation after parsing the message again.",
+        message: "Save committed, but the refreshed ledger baseline could not be loaded.",
+        hint: "Retry refresh. If the issue persists, restart the app and verify local database access.",
       });
     } finally {
       setIsSaving(false);
@@ -235,6 +250,7 @@ function App() {
                 setParseError(error);
                 setSaveError(null);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
                 setIsCorrectionOpen(false);
                 setMismatchResolution(null);
                 setDuplicateDecision(null);
@@ -261,12 +277,15 @@ function App() {
               onMismatchResolutionChange={(value) => {
                 setMismatchResolution(value);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               onDuplicateDecisionChange={(value) => {
                 setDuplicateDecision(value);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               preflightAccountMismatch={preflightAccountMismatch}
+              saveLifecycleState={saveLifecycleState}
             />
             <CorrectionPanel
               isOpen={isCorrectionOpen}
@@ -280,6 +299,7 @@ function App() {
                 }));
                 setSaveError(null);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               onApply={() => {
                 setIsCorrectionOpen(false);

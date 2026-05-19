@@ -3,9 +3,9 @@
 ## Metadata
 - Story Key: 2-5-deterministic-save-state-machine-and-audit-trail
 - Epic: Epic 2 - Capture Transactions with Safe Validation and Corrections
-- Status: ready-for-dev
+- Status: done
 - Created: 2026-05-14T00:00:00+05:30
-- Last Updated: 2026-05-14T00:00:00+05:30
+- Last Updated: 2026-05-19T00:00:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
 
 ## Story
@@ -19,23 +19,31 @@ So that repeated inputs produce predictable trusted results.
 
 ## Tasks / Subtasks
 
-- [ ] Implement explicit save state machine orchestration (AC: 1, 2)
-  - [ ] Define frontend save lifecycle states (idle, validating, blocked, persisting, success, failed) in capture flow orchestration.
-  - [ ] Ensure deterministic transitions only; no implicit fallback transitions.
-- [ ] Implement first write path for transaction persistence (AC: 1, 2)
-  - [ ] Update `app/src-tauri/src/commands/capture.rs` save command to persist when validation and explicit decisions pass.
-  - [ ] Use SQL transaction boundaries so transaction row + audit row are committed atomically.
-  - [ ] Return deterministic success payload with stable identifiers and timestamps.
-- [ ] Add migration(s) for transaction and audit trail persistence (AC: 1)
-  - [ ] Add ordered migration files under `app/src-tauri/migrations/` for transaction rows and audit history.
-  - [ ] Update `app/src-tauri/src/db/ledger.rs` migration list without modifying existing migration semantics in place.
-- [ ] Refresh ledger/dashboard surfaces only after successful write (AC: 1, 2)
-  - [ ] Update `app/src/App.tsx` to refresh baseline only on successful persistence response.
-  - [ ] Ensure failed paths leave ledger/dashboard presentation unchanged.
-- [ ] Add deterministic and no-mutation regression coverage (AC: 1, 2)
-  - [ ] Add Rust tests for atomic commit/rollback guarantees and deterministic repeated-save outcomes.
-  - [ ] Extend `app/src/features/capture/capture.test.tsx` with success path refresh and failure no-mutation behavior.
-  - [ ] Preserve all Story 2.1 to 2.4 behavior and tests.
+- [x] Implement explicit save state machine orchestration (AC: 1, 2)
+  - [x] Define frontend save lifecycle states (idle, validating, blocked, persisting, success, failed) in capture flow orchestration.
+  - [x] Ensure deterministic transitions only; no implicit fallback transitions.
+- [x] Implement first write path for transaction persistence (AC: 1, 2)
+  - [x] Update `app/src-tauri/src/commands/capture.rs` save command to persist when validation and explicit decisions pass.
+  - [x] Use SQL transaction boundaries so transaction row + audit row are committed atomically.
+  - [x] Return deterministic success payload with stable identifiers and timestamps.
+- [x] Add migration(s) for transaction and audit trail persistence (AC: 1)
+  - [x] Add ordered migration files under `app/src-tauri/migrations/` for transaction rows and audit history.
+  - [x] Update `app/src-tauri/src/db/ledger.rs` migration list without modifying existing migration semantics in place.
+- [x] Refresh ledger/dashboard surfaces only after successful write (AC: 1, 2)
+  - [x] Update `app/src/App.tsx` to refresh baseline only on successful persistence response.
+  - [x] Ensure failed paths leave ledger/dashboard presentation unchanged.
+- [x] Add deterministic and no-mutation regression coverage (AC: 1, 2)
+  - [x] Add Rust tests for atomic commit/rollback guarantees and deterministic repeated-save outcomes.
+  - [x] Extend `app/src/features/capture/capture.test.tsx` with success path refresh and failure no-mutation behavior.
+  - [x] Preserve all Story 2.1 to 2.4 behavior and tests.
+
+### Review Findings
+
+- [x] [Review][Patch] Apply `use-parsed-account` by persisting to the parsed account when selected [app/src-tauri/src/commands/capture.rs:200]
+- [x] [Review][Patch] Duplicate `skip-save` decision still persists and refreshes the ledger [app/src-tauri/src/commands/capture.rs:200]
+- [x] [Review][Patch] Audit trail schema stores only one row per transaction, so repeated save history is not persisted [app/src-tauri/migrations/0003_create_capture_audit_trail.sql:5]
+- [x] [Review][Patch] Ledger baseline sums capture amounts without applying debit or credit direction [app/src-tauri/src/commands/ledger.rs:481]
+- [x] [Review][Patch] Save lifecycle reports success before the post-commit refresh completes [app/src/App.tsx:195]
 
 ## Dev Notes
 
@@ -191,8 +199,8 @@ So that repeated inputs produce predictable trusted results.
 - `app/src/features/capture/capture.test.tsx`
 
 ## Story Completion Status
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: done
+- Completion note: Deterministic capture persistence, audit trail, and state-machine work completed and validated for review.
 
 ## Dev Agent Record
 
@@ -202,9 +210,28 @@ GPT-5.3-Codex
 ### Debug Log References
 - Workflow activation and artifact discovery completed.
 - Epic 2 backlog stories analyzed with current schema and command boundaries.
+- Implemented idempotent capture persistence with audit-trail writes and unioned baseline refresh.
+- Validated backend with `cargo test --lib capture` and frontend with `pnpm test`.
 
 ### Completion Notes List
-- Created story context with atomic write, deterministic state-machine, and audit-trail guardrails.
+- Added deterministic save lifecycle orchestration in the capture flow.
+- Persisted capture transactions and audit history atomically with stable repeated-save outcomes.
+- Refreshed the ledger baseline only after committed writes and kept failed paths from mutating the view.
+- Added regression coverage for atomic commit, rollback, repeat-save determinism, success refresh, and failure no-mutation behavior.
 
 ### File List
 - _bmad-output/implementation-artifacts/2-5-deterministic-save-state-machine-and-audit-trail.md
+- app/src-tauri/migrations/0002_add_capture_transactions.sql
+- app/src-tauri/migrations/0003_create_capture_audit_trail.sql
+- app/src-tauri/src/commands/capture.rs
+- app/src-tauri/src/commands/ledger.rs
+- app/src-tauri/src/db/ledger.rs
+- app/src/App.tsx
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/components/TransactionInput.tsx
+- app/src/features/capture/capture.test.tsx
+- app/src/features/capture/schema.ts
+- app/src/features/capture/service.ts
+
+## Change Log
+- 2026-05-19: Implemented deterministic capture persistence, audit trail writes, save lifecycle UI state, and regression tests.

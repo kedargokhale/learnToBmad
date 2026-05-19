@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Row, Sqlite};
 use tauri::AppHandle;
 
 use crate::db::ledger;
@@ -25,7 +25,7 @@ pub struct ParsePreviewResponse {
     pub readiness_state: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveAccountContext {
     pub account_id: i64,
@@ -105,6 +105,18 @@ pub struct SaveTransactionAttemptResponse {
     pub accepted_for_write: bool,
     pub checked_fields: Vec<&'static str>,
     pub message: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persisted_record: Option<PersistedCaptureRecord>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedCaptureRecord {
+    pub transaction_id: i64,
+    pub transaction_fingerprint: String,
+    pub transaction_created_at: String,
+    pub audit_entry_id: i64,
+    pub audit_created_at: String,
 }
 
 const VALIDATION_REQUIRED_FIELDS: [&str; 6] = [
@@ -173,27 +185,243 @@ async fn attempt_transaction_save_with_pool(
     pool: &Pool<Sqlite>,
     payload: SaveTransactionAttemptRequest,
 ) -> CommandEnvelope<SaveTransactionAttemptResponse> {
-    let transaction = match pool.begin().await {
-        Ok(tx) => tx,
-        Err(error) => return persistence_error_envelope(error.to_string()),
-    };
-
     if let Some(command_error) = validate_save_request(&payload) {
-        let _ = transaction.rollback().await;
         return command_error;
     }
 
-    let _ = transaction.rollback().await;
+    if matches!(payload.duplicate_decision, Some(DuplicateDecision::SkipSave)) {
+        return CommandEnvelope {
+            ok: true,
+            data: Some(SaveTransactionAttemptResponse {
+                validation_state: "passed",
+                accepted_for_write: false,
+                checked_fields: VALIDATION_REQUIRED_FIELDS.to_vec(),
+                message: "Validation passed and save was skipped by explicit duplicate decision.",
+                persisted_record: None,
+            }),
+            error: None,
+        };
+    }
+
+    let resolved_account_context = match resolve_target_account_context(pool, &payload).await {
+        Ok(context) => context,
+        Err(command_error) => return command_error,
+    };
+
+    let persisted_record = match persist_transaction_save_with_pool(
+        pool,
+        &payload,
+        &resolved_account_context,
+    )
+    .await
+    {
+        Ok(record) => record,
+        Err(error) => return persistence_error_envelope(error),
+    };
 
     CommandEnvelope {
         ok: true,
         data: Some(SaveTransactionAttemptResponse {
             validation_state: "passed",
-            accepted_for_write: false,
+            accepted_for_write: true,
             checked_fields: VALIDATION_REQUIRED_FIELDS.to_vec(),
-            message: "Validation passed. Persistence is deferred in this story scope.",
+            message: "Validation passed and the transaction was persisted deterministically.",
+            persisted_record: Some(persisted_record),
         }),
         error: None,
+    }
+}
+
+async fn persist_transaction_save_with_pool(
+    pool: &Pool<Sqlite>,
+    payload: &SaveTransactionAttemptRequest,
+    resolved_account_context: &SaveAccountContext,
+) -> Result<PersistedCaptureRecord, String> {
+    persist_transaction_save_with_pool_with_event(
+        pool,
+        payload,
+        resolved_account_context,
+        "save_persisted",
+    )
+    .await
+}
+
+async fn persist_transaction_save_with_pool_with_event(
+    pool: &Pool<Sqlite>,
+    payload: &SaveTransactionAttemptRequest,
+    resolved_account_context: &SaveAccountContext,
+    event_kind: &'static str,
+) -> Result<PersistedCaptureRecord, String> {
+    let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+    let transaction_fingerprint =
+        build_transaction_fingerprint(payload, resolved_account_context);
+
+    let capture_insert = sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO capture_transactions (
+            account_id,
+            transaction_fingerprint,
+            raw_text,
+            normalized_text,
+            amount_minor,
+            direction,
+            transaction_date,
+            bank_name,
+            account_number,
+            merchant_or_payee,
+            mismatch_resolution,
+            duplicate_decision,
+            save_state
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'persisted')
+        "#,
+    )
+    .bind(resolved_account_context.account_id)
+    .bind(&transaction_fingerprint)
+    .bind(&payload.parsed_payload.raw_text)
+    .bind(&payload.parsed_payload.normalized_text)
+    .bind(payload.parsed_payload.amount_minor.unwrap_or_default())
+    .bind(payload.parsed_payload.direction.as_deref().unwrap_or("debit"))
+    .bind(payload.parsed_payload.transaction_date.as_deref().unwrap_or_default())
+    .bind(payload.parsed_payload.bank_name.as_deref().unwrap_or_default())
+    .bind(payload.parsed_payload.account_number.as_deref().unwrap_or_default())
+    .bind(payload.parsed_payload.merchant_or_payee.as_deref().unwrap_or_default())
+    .bind(
+        payload
+            .mismatch_resolution
+            .as_ref()
+            .map(save_resolution_label)
+            .unwrap_or("none"),
+    )
+    .bind(
+        payload
+            .duplicate_decision
+            .as_ref()
+            .map(duplicate_decision_label)
+            .unwrap_or("none"),
+    )
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let transaction_id = if capture_insert.rows_affected() > 0 {
+        capture_insert.last_insert_rowid()
+    } else {
+        sqlx::query("SELECT id FROM capture_transactions WHERE transaction_fingerprint = $1")
+            .bind(&transaction_fingerprint)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?
+            .get::<i64, _>("id")
+    };
+
+    let transaction_created_at = sqlx::query(
+        "SELECT created_at FROM capture_transactions WHERE id = $1",
+    )
+    .bind(transaction_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(|error| error.to_string())?
+    .get::<String, _>("created_at");
+
+    let audit_payload = json!({
+        "transactionFingerprint": transaction_fingerprint,
+        "accountId": resolved_account_context.account_id,
+        "resolvedBankName": resolved_account_context.bank_name,
+        "resolvedAccountNumber": resolved_account_context.account_number,
+        "rawText": payload.parsed_payload.raw_text,
+        "normalizedText": payload.parsed_payload.normalized_text,
+        "amountMinor": payload.parsed_payload.amount_minor,
+        "direction": payload.parsed_payload.direction,
+        "transactionDate": payload.parsed_payload.transaction_date,
+        "bankName": payload.parsed_payload.bank_name,
+        "accountNumber": payload.parsed_payload.account_number,
+        "merchantOrPayee": payload.parsed_payload.merchant_or_payee,
+        "mismatchResolution": payload.mismatch_resolution,
+        "duplicateDecision": payload.duplicate_decision,
+    });
+
+    let audit_insert = sqlx::query(
+        r#"
+        INSERT INTO capture_audit_trail (
+            capture_transaction_id,
+            event_kind,
+            payload_json
+        ) VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(event_kind)
+    .bind(audit_payload.to_string())
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let audit_entry_id = audit_insert.last_insert_rowid();
+
+    let audit_created_at = sqlx::query("SELECT created_at FROM capture_audit_trail WHERE id = $1")
+        .bind(audit_entry_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|error| error.to_string())?
+        .get::<String, _>("created_at");
+
+    transaction.commit().await.map_err(|error| error.to_string())?;
+
+    Ok(PersistedCaptureRecord {
+        transaction_id,
+        transaction_fingerprint,
+        transaction_created_at,
+        audit_entry_id,
+        audit_created_at,
+    })
+}
+
+fn build_transaction_fingerprint(
+    payload: &SaveTransactionAttemptRequest,
+    resolved_account_context: &SaveAccountContext,
+) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+
+    for value in [
+        resolved_account_context.account_id.to_string(),
+        resolved_account_context.bank_name.clone(),
+        resolved_account_context.account_number.clone(),
+        payload.parsed_payload.raw_text.clone(),
+        payload.parsed_payload.normalized_text.clone(),
+        payload
+            .parsed_payload
+            .amount_minor
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        payload.parsed_payload.direction.clone().unwrap_or_default(),
+        payload.parsed_payload.transaction_date.clone().unwrap_or_default(),
+        payload.parsed_payload.bank_name.clone().unwrap_or_default(),
+        payload.parsed_payload.account_number.clone().unwrap_or_default(),
+        payload.parsed_payload.merchant_or_payee.clone().unwrap_or_default(),
+    ] {
+        for byte in value.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    format!("{:016x}", hash)
+}
+
+fn save_resolution_label(value: &AccountMismatchResolution) -> &'static str {
+    match value {
+        AccountMismatchResolution::UseSelectedAccount => "use-selected-account",
+        AccountMismatchResolution::UseParsedAccount => "use-parsed-account",
+    }
+}
+
+fn duplicate_decision_label(value: &DuplicateDecision) -> &'static str {
+    match value {
+        DuplicateDecision::SaveAsNew => "save-as-new",
+        DuplicateDecision::SkipSave => "skip-save",
     }
 }
 
@@ -1187,7 +1415,8 @@ fn uppercase_first(value: &str) -> String {
 mod tests {
     use super::{
         attempt_transaction_save_with_pool, classify_message_family, parse_preview_envelope,
-        MessageFamily, SaveAccountContext, SaveTransactionAttemptRequest,
+        persist_transaction_save_with_pool_with_event, AccountMismatchResolution,
+        DuplicateDecision, MessageFamily, SaveAccountContext, SaveTransactionAttemptRequest,
         SaveTransactionParsedPayload,
     };
     use sqlx::{sqlite::SqlitePoolOptions, Row};
@@ -1203,6 +1432,21 @@ mod tests {
             .execute(&pool)
             .await
             .expect("migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0002_add_capture_transactions.sql"))
+            .execute(&pool)
+            .await
+            .expect("capture migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0003_create_capture_audit_trail.sql"))
+            .execute(&pool)
+            .await
+            .expect("audit migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0004_expand_capture_audit_history.sql"))
+            .execute(&pool)
+            .await
+            .expect("audit expansion migration to apply");
 
         sqlx::query("INSERT INTO accounts (bank_name, account_number) VALUES ('HDFC Bank', 'XX1234')")
             .execute(&pool)
@@ -1226,7 +1470,7 @@ mod tests {
         pool
     }
 
-    async fn table_counts(pool: &sqlx::Pool<sqlx::Sqlite>) -> (i64, i64) {
+    async fn table_counts(pool: &sqlx::Pool<sqlx::Sqlite>) -> (i64, i64, i64, i64) {
         let account_count = sqlx::query("SELECT COUNT(*) AS count FROM accounts")
             .fetch_one(pool)
             .await
@@ -1239,7 +1483,19 @@ mod tests {
             .expect("ledger count query should succeed")
             .get::<i64, _>("count");
 
-        (account_count, ledger_count)
+        let capture_count = sqlx::query("SELECT COUNT(*) AS count FROM capture_transactions")
+            .fetch_one(pool)
+            .await
+            .expect("capture count query should succeed")
+            .get::<i64, _>("count");
+
+        let audit_count = sqlx::query("SELECT COUNT(*) AS count FROM capture_audit_trail")
+            .fetch_one(pool)
+            .await
+            .expect("audit count query should succeed")
+            .get::<i64, _>("count");
+
+        (account_count, ledger_count, capture_count, audit_count)
     }
 
     #[tokio::test]
@@ -1358,7 +1614,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn passes_validation_for_complete_payload_without_mutation() {
+    async fn persists_complete_payload_and_refreshes_ledger_state() {
         let pool = setup_pool().await;
         let before = table_counts(&pool).await;
 
@@ -1393,7 +1649,11 @@ mod tests {
         assert!(result.ok);
         let data = result.data.expect("success payload expected");
         assert_eq!(data.validation_state, "passed");
-        assert!(!data.accepted_for_write);
+        assert!(data.accepted_for_write);
+        let persisted_record = data
+            .persisted_record
+            .expect("persisted record should exist for accepted write");
+        assert!(!persisted_record.transaction_fingerprint.is_empty());
         assert_eq!(
             data.checked_fields,
             vec![
@@ -1406,6 +1666,242 @@ mod tests {
             ]
         );
 
+        let after = table_counts(&pool).await;
+        assert_eq!(before.0, after.0);
+        assert_eq!(before.1, after.1);
+        assert_eq!(after.2, before.2 + 1);
+        assert_eq!(after.3, before.3 + 1);
+
+        let baseline = crate::commands::ledger::get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed after capture save");
+
+        let account = baseline.account.expect("account should remain available");
+        assert_eq!(account.current_balance_minor, -115050);
+        assert_eq!(baseline.entries.len(), 2);
+        assert!(baseline
+            .entries
+            .iter()
+            .any(|entry| entry.entry_kind == "capture_transaction"));
+    }
+
+    #[tokio::test]
+    async fn returns_same_transaction_identity_and_new_audit_entry_for_identical_valid_saves() {
+        let pool = setup_pool().await;
+
+        let first = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        let second = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        assert!(first.ok);
+        assert!(second.ok);
+
+        let first_record = first
+            .data
+            .expect("first success payload expected")
+            .persisted_record
+            .expect("first persisted record should exist");
+        let second_record = second
+            .data
+            .expect("second success payload expected")
+            .persisted_record
+            .expect("second persisted record should exist");
+
+        assert_eq!(first_record.transaction_id, second_record.transaction_id);
+        assert_eq!(first_record.transaction_fingerprint, second_record.transaction_fingerprint);
+        assert_eq!(first_record.transaction_created_at, second_record.transaction_created_at);
+        assert!(second_record.audit_entry_id > first_record.audit_entry_id);
+
+        let counts = table_counts(&pool).await;
+        assert_eq!(counts.2, 1);
+        assert_eq!(counts.3, 2);
+    }
+
+    #[tokio::test]
+    async fn skips_persistence_when_duplicate_decision_is_skip_save() {
+        let pool = setup_pool().await;
+        let before = table_counts(&pool).await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "possible duplicate already processed".to_string(),
+                    normalized_text: "possible duplicate already processed".to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: Some(DuplicateDecision::SkipSave),
+            },
+        )
+        .await;
+
+        assert!(result.ok);
+        let data = result.data.expect("success payload expected");
+        assert!(!data.accepted_for_write);
+        assert!(data.persisted_record.is_none());
+
+        let after = table_counts(&pool).await;
+        assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn persists_to_parsed_account_when_resolution_uses_parsed_account() {
+        let pool = setup_pool().await;
+
+        sqlx::query("INSERT INTO accounts (bank_name, account_number) VALUES ('ICICI Bank', 'XX9999')")
+            .execute(&pool)
+            .await
+            .expect("second account insert should succeed");
+
+        let parsed_account_id = sqlx::query("SELECT id FROM accounts WHERE bank_name = 'ICICI Bank' AND account_number = 'XX9999' LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .expect("parsed account should exist")
+            .get::<i64, _>("id");
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "ICICI Bank Alert: A/c XX9999 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "ICICI Bank Alert: A/c XX9999 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("ICICI Bank".to_string()),
+                    account_number: Some("XX9999".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: Some(AccountMismatchResolution::UseParsedAccount),
+                duplicate_decision: Some(DuplicateDecision::SaveAsNew),
+            },
+        )
+        .await;
+
+        assert!(result.ok);
+
+        let persisted_account_id = sqlx::query("SELECT account_id FROM capture_transactions ORDER BY id DESC LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .expect("capture transaction should be written")
+            .get::<i64, _>("account_id");
+
+        assert_eq!(persisted_account_id, parsed_account_id);
+    }
+
+    #[tokio::test]
+    async fn rolls_back_transaction_and_audit_rows_when_audit_insert_fails() {
+        let pool = setup_pool().await;
+        let before = table_counts(&pool).await;
+
+        let result = persist_transaction_save_with_pool_with_event(
+            &pool,
+            &SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
+                duplicate_decision: Some(DuplicateDecision::SaveAsNew),
+            },
+            &SaveAccountContext {
+                account_id: 1,
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+            },
+            "broken_event",
+        )
+        .await;
+
+        assert!(result.is_err());
         let after = table_counts(&pool).await;
         assert_eq!(before, after);
     }
@@ -1513,7 +2009,7 @@ mod tests {
                     merchant_or_payee: Some("BigBazaar".to_string()),
                     readiness_state: Some("ready".to_string()),
                 },
-                mismatch_resolution: Some("use-selected-account".to_string()),
+                mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
                 duplicate_decision: None,
             },
         )
@@ -1540,8 +2036,8 @@ mod tests {
                     merchant_or_payee: Some("BigBazaar".to_string()),
                     readiness_state: Some("ready".to_string()),
                 },
-                mismatch_resolution: Some("use-selected-account".to_string()),
-                duplicate_decision: Some("save-as-new".to_string()),
+                mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
+                duplicate_decision: Some(DuplicateDecision::SaveAsNew),
             },
         )
         .await;
@@ -1990,5 +2486,87 @@ fn month_abbrev_to_number(value: &str) -> Option<u32> {
         "NOV" => Some(11),
         "DEC" => Some(12),
         _ => None,
+    }
+}
+
+async fn resolve_target_account_context(
+    pool: &Pool<Sqlite>,
+    payload: &SaveTransactionAttemptRequest,
+) -> Result<SaveAccountContext, CommandEnvelope<SaveTransactionAttemptResponse>> {
+    if !matches!(
+        payload.mismatch_resolution,
+        Some(AccountMismatchResolution::UseParsedAccount)
+    ) {
+        return Ok(payload.account_context.clone());
+    }
+
+    let Some(parsed_bank_name) = payload
+        .parsed_payload
+        .bank_name
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(missing_parsed_account_envelope(
+            "Parsed bank name is required before save can target the parsed account.",
+        ));
+    };
+
+    let Some(parsed_account_number) = payload
+        .parsed_payload
+        .account_number
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(missing_parsed_account_envelope(
+            "Parsed account number is required before save can target the parsed account.",
+        ));
+    };
+
+    let row = sqlx::query(
+        "SELECT id, bank_name, account_number FROM accounts WHERE bank_name = $1 AND account_number = $2 LIMIT 1",
+    )
+    .bind(parsed_bank_name)
+    .bind(parsed_account_number)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| persistence_error_envelope(error.to_string()))?;
+
+    let Some(row) = row else {
+        return Err(missing_parsed_account_envelope(
+            "The parsed account was not found in local ledger accounts. Create or select that account before saving.",
+        ));
+    };
+
+    Ok(SaveAccountContext {
+        account_id: row.get::<i64, _>("id"),
+        bank_name: row.get::<String, _>("bank_name"),
+        account_number: row.get::<String, _>("account_number"),
+    })
+}
+
+fn missing_parsed_account_envelope(
+    message: &'static str,
+) -> CommandEnvelope<SaveTransactionAttemptResponse> {
+    CommandEnvelope {
+        ok: false,
+        data: None,
+        error: Some(ErrorEnvelope {
+            code: "VALIDATION_FAILED",
+            message: message.to_string(),
+            hint: Some(
+                "Create or select the parsed account in the local ledger, then retry save."
+                    .to_string(),
+            ),
+            details: Some(json!({
+                "blockedFields": [{
+                    "field": "accountNumber",
+                    "reason": "ambiguous",
+                    "hint": "Parsed account is not yet available in the local ledger."
+                }],
+                "nextAction": "Create/select the parsed account and retry save.",
+            })),
+        }),
     }
 }

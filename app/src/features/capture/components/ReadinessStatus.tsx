@@ -7,7 +7,9 @@ import {
   getFieldDisplayName,
   formatCurrency,
   parsePreviewSchema,
+  getSaveLifecycleLabel,
   saveGateDecisionDetailsSchema,
+  type SaveLifecycleState,
   type ParsePreviewViewModel,
 } from "../schema";
 import { AccountMismatchResolver } from "./AccountMismatchResolver";
@@ -30,6 +32,7 @@ type ReadinessStatusProps = {
   duplicateDecision: DuplicateDecision | null;
   onMismatchResolutionChange: (value: AccountMismatchResolution) => void;
   onDuplicateDecisionChange: (value: DuplicateDecision) => void;
+  saveLifecycleState: SaveLifecycleState;
   preflightAccountMismatch?: {
     detected: boolean;
     requiresResolution: boolean;
@@ -52,6 +55,7 @@ export function ReadinessStatus({
   duplicateDecision,
   onMismatchResolutionChange,
   onDuplicateDecisionChange,
+  saveLifecycleState,
   preflightAccountMismatch,
 }: ReadinessStatusProps) {
   const parsedPreview = preview ? parsePreviewSchema.safeParse(preview) : null;
@@ -119,6 +123,22 @@ export function ReadinessStatus({
   return (
     <section className="ledger-card capture-card" aria-live="polite">
       <h2>Readiness status</h2>
+      {saveLifecycleState !== "idle" ? (
+        <div className={saveLifecycleState === "failed" || saveLifecycleState === "blocked" ? "status-banner" : "success-banner"} role={saveLifecycleState === "failed" ? "alert" : "status"}>
+          <strong>{getSaveLifecycleLabel(saveLifecycleState)}</strong>
+          <div>
+            {saveLifecycleState === "validating"
+              ? "Checking validation gates before any write is attempted."
+              : saveLifecycleState === "persisting"
+                ? "The transaction row and audit trail are being written together."
+                : saveLifecycleState === "success"
+                  ? "Refresh completed only after the commit response returned successfully."
+                  : saveLifecycleState === "blocked"
+                    ? "The flow stopped before persistence because a required decision or field is still missing."
+                    : "The last save attempt failed and the baseline was left unchanged."}
+          </div>
+        </div>
+      ) : null}
       <div className="success-banner" role="status">
         <strong>State: {computeReadinessLabel(viewModel.readinessState)}</strong>
         <div>
@@ -218,11 +238,13 @@ export function ReadinessStatus({
 
       {saveResult ? (
         <div className="success-banner" role="status">
-          <strong>Save gate result: {saveResult.validationState}</strong>
+          <strong>Save persisted: {saveResult.validationState}</strong>
           <div>{saveResult.message}</div>
-          <div>
-            Deterministic scope note: validation passed, but no transaction row is written in this story phase.
-          </div>
+          {saveResult.persistedRecord ? (
+            <div>
+              Transaction #{saveResult.persistedRecord.transactionId} and audit #{saveResult.persistedRecord.auditEntryId} were committed together at {saveResult.persistedRecord.transactionCreatedAt}.
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

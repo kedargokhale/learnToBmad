@@ -84,7 +84,7 @@ export function TransactionInput({
     <section className="ledger-card capture-card">
       <h2>Paste-to-parse capture</h2>
       <p className="section-copy">
-        Paste a full bank message to extract critical fields locally. This step only previews parse readiness and never saves transactions.
+        Paste a full bank message to extract critical fields locally. The save flow still validates first, then persists the transaction and audit trail only after the gates pass.
       </p>
 
       <div className="field">
@@ -133,7 +133,7 @@ export function TransactionInput({
         >
           {isSaving ? "Validating save..." : "Run save validation"}
         </button>
-        <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data. In this story scope, save runs validation only and does not persist a transaction row.</div>
+        <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data. Save validation runs before persistence, and the baseline refreshes only after a committed write.</div>
       </div>
 
       {saveBlockedReasons.length > 0 ? (
@@ -146,7 +146,7 @@ export function TransactionInput({
           </ul>
         </div>
       ) : (
-        <div className="hint">Save validation gate is available. Use Run save validation to execute a deterministic check only (no write yet).</div>
+        <div className="hint">Save validation gate is available. Use Run save validation to validate first and persist only when the flow is ready.</div>
       )}
     </section>
   );

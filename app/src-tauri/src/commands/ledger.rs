@@ -266,6 +266,21 @@ mod tests {
             .await
             .expect("migration to apply");
 
+        sqlx::raw_sql(include_str!("../../migrations/0002_add_capture_transactions.sql"))
+            .execute(&pool)
+            .await
+            .expect("capture migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0003_create_capture_audit_trail.sql"))
+            .execute(&pool)
+            .await
+            .expect("audit migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0004_expand_capture_audit_history.sql"))
+            .execute(&pool)
+            .await
+            .expect("audit expansion migration to apply");
+
         pool
     }
 
@@ -445,7 +460,7 @@ pub async fn get_ledger_baseline(app: AppHandle) -> CommandEnvelope<LedgerBaseli
     }
 }
 
-async fn get_ledger_baseline_with_pool(
+pub(crate) async fn get_ledger_baseline_with_pool(
     pool: &Pool<Sqlite>,
 ) -> Result<LedgerBaselineResponse, CommandError> {
     let account_row = sqlx::query(
@@ -468,7 +483,7 @@ async fn get_ledger_baseline_with_pool(
     let account_number = account_row.get::<String, _>("account_number");
 
     let current_balance_minor = sqlx::query(
-        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM ledger_entries WHERE account_id = $1",
+        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM (SELECT amount_minor FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor FROM capture_transactions WHERE account_id = $1)",
     )
     .bind(account_id)
     .fetch_one(pool)
@@ -477,7 +492,7 @@ async fn get_ledger_baseline_with_pool(
     .get::<i64, _>("current_balance_minor");
 
     let entry_rows = sqlx::query(
-        "SELECT id, entry_kind, amount_minor, created_at FROM ledger_entries WHERE account_id = $1 ORDER BY created_at DESC, id DESC",
+        "SELECT id, entry_kind, amount_minor, created_at FROM (SELECT id, entry_kind, amount_minor, created_at FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor, created_at FROM capture_transactions WHERE account_id = $1) ORDER BY created_at DESC, id DESC",
     )
     .bind(account_id)
     .fetch_all(pool)
