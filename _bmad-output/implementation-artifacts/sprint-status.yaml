@@ -54,7 +54,7 @@ development_status:
   2-2-critical-field-validation-gate-before-save: done
   2-3-guided-correction-and-retry-flow: done
   2-4-account-mismatch-resolution-and-duplicate-flagging: done
-  2-5-deterministic-save-state-machine-and-audit-trail: review
+  2-5-deterministic-save-state-machine-and-audit-trail: done
   epic-2-retrospective: optional
 
   epic-3: backlog

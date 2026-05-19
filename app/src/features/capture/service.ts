@@ -51,7 +51,7 @@ export type SaveTransactionAttemptData = {
   acceptedForWrite: boolean;
   checkedFields: ReadonlyArray<BlockedFieldReason["field"]>;
   message: string;
-  persistedRecord: {
+  persistedRecord?: {
     transactionId: number;
     transactionFingerprint: string;
     transactionCreatedAt: string;

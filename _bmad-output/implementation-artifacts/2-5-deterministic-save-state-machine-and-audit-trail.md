@@ -3,7 +3,7 @@
 ## Metadata
 - Story Key: 2-5-deterministic-save-state-machine-and-audit-trail
 - Epic: Epic 2 - Capture Transactions with Safe Validation and Corrections
-- Status: review
+- Status: done
 - Created: 2026-05-14T00:00:00+05:30
 - Last Updated: 2026-05-19T00:00:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
@@ -36,6 +36,14 @@ So that repeated inputs produce predictable trusted results.
   - [x] Add Rust tests for atomic commit/rollback guarantees and deterministic repeated-save outcomes.
   - [x] Extend `app/src/features/capture/capture.test.tsx` with success path refresh and failure no-mutation behavior.
   - [x] Preserve all Story 2.1 to 2.4 behavior and tests.
+
+### Review Findings
+
+- [x] [Review][Patch] Apply `use-parsed-account` by persisting to the parsed account when selected [app/src-tauri/src/commands/capture.rs:200]
+- [x] [Review][Patch] Duplicate `skip-save` decision still persists and refreshes the ledger [app/src-tauri/src/commands/capture.rs:200]
+- [x] [Review][Patch] Audit trail schema stores only one row per transaction, so repeated save history is not persisted [app/src-tauri/migrations/0003_create_capture_audit_trail.sql:5]
+- [x] [Review][Patch] Ledger baseline sums capture amounts without applying debit or credit direction [app/src-tauri/src/commands/ledger.rs:481]
+- [x] [Review][Patch] Save lifecycle reports success before the post-commit refresh completes [app/src/App.tsx:195]
 
 ## Dev Notes
 
@@ -191,7 +199,7 @@ So that repeated inputs produce predictable trusted results.
 - `app/src/features/capture/capture.test.tsx`
 
 ## Story Completion Status
-- Status set to: review
+- Status set to: done
 - Completion note: Deterministic capture persistence, audit trail, and state-machine work completed and validated for review.
 
 ## Dev Agent Record

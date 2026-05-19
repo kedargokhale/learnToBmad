@@ -128,12 +128,15 @@ function App() {
   }).concat(decisionBlockedReasons);
   const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
-  const loadBaseline = useCallback(async () => {
+  const loadBaseline = useCallback(async (failOnError = false) => {
     setIsLoading(true);
 
     try {
       const result = await getLedgerBaseline();
       if (!result.ok) {
+        if (failOnError) {
+          throw new Error("Failed to refresh ledger baseline from persisted data.");
+        }
         setBaseline({
           account: null,
           entries: [],
@@ -144,6 +147,9 @@ function App() {
 
       setBaseline(result.data);
     } catch {
+      if (failOnError) {
+        throw new Error("Failed to refresh ledger baseline from persisted data.");
+      }
       setBaseline({
         account: null,
         entries: [],
@@ -192,18 +198,19 @@ function App() {
         return;
       }
 
-      setSaveLifecycleState("success");
       setSaveResult(result.data);
 
       if (result.data.acceptedForWrite) {
-        await loadBaseline();
+        await loadBaseline(true);
       }
+
+      setSaveLifecycleState("success");
     } catch {
       setSaveLifecycleState("failed");
       setSaveError({
         code: "PERSISTENCE_ERROR",
-        message: "Save validation failed before a deterministic result was produced.",
-        hint: "Retry save validation after parsing the message again.",
+        message: "Save committed, but the refreshed ledger baseline could not be loaded.",
+        hint: "Retry refresh. If the issue persists, restart the app and verify local database access.",
       });
     } finally {
       setIsSaving(false);

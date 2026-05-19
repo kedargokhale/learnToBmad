@@ -240,9 +240,11 @@ export function ReadinessStatus({
         <div className="success-banner" role="status">
           <strong>Save persisted: {saveResult.validationState}</strong>
           <div>{saveResult.message}</div>
-          <div>
-            Transaction #{saveResult.persistedRecord.transactionId} and audit #{saveResult.persistedRecord.auditEntryId} were committed together at {saveResult.persistedRecord.transactionCreatedAt}.
-          </div>
+          {saveResult.persistedRecord ? (
+            <div>
+              Transaction #{saveResult.persistedRecord.transactionId} and audit #{saveResult.persistedRecord.auditEntryId} were committed together at {saveResult.persistedRecord.transactionCreatedAt}.
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
