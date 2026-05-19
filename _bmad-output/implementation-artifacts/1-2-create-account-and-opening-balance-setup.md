@@ -16,6 +16,11 @@ So that I can start a reliable, forward-only ledger.
 ## Acceptance Criteria
 1. Given no account exists for a bank/account-number pair, when I confirm bank and account number and enter opening balance, then a new account is created using bank+account-number composite uniqueness and the ledger starts from that opening balance in going-forward-only mode.
 
+## Correct Course Update (2026-05-19)
+- Approved onboarding correction: first launch should show an empty dashboard with capture surface, not force account setup.
+- Account confirmation and opening-balance entry are now treated as save-triggered, conditional steps when the parsed account does not exist.
+- This note preserves historical implementation context while aligning future development with the approved sprint change proposal.
+
 ## Tasks / Subtasks
 - [x] Establish the ledger persistence baseline for account setup (AC: 1)
   - [x] Add the first SQLite migration and database bootstrap under `app/src-tauri/migrations/` and `app/src-tauri/src/db/` for the minimal account and ledger tables needed by this story.

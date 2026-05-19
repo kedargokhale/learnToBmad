@@ -115,7 +115,7 @@ This is a greenfield `web_app` in the `fintech` domain with `high` complexity. T
 
 **Persona:** Privacy-conscious individual user tracking personal spending from bank messages.
 **Opening Scene:** The user is tired of scattered transaction messages and wants clarity without sharing data or connecting bank APIs.
-**Rising Action:** The user opens the app, pastes the first bank message, confirms account details if needed, and sees the transaction captured with category and merchant context.
+**Rising Action:** The user opens the app to an empty dashboard with a paste-ready capture surface, pastes the first bank message, and clicks Save. The system checks whether the parsed account exists: if it does not, the user confirms account details and opening balance before persistence; if it does, the transaction is captured directly after validation.
 **Climax:** Within the first session, the dashboard starts showing meaningful insight immediately, especially where money is going by category and merchant.
 **Resolution:** The user feels relief and control: tracking is finally low-friction, private, and useful from day one.
 
@@ -275,7 +275,7 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 
 **Core Journeys Supported:**
 
-1. **Primary User Success Path** - New account setup, first message paste, account confirmation, opening balance entry, and immediate dashboard insight.
+1. **Primary User Success Path** - Empty dashboard on first launch, first message paste, conditional account confirmation and opening-balance entry only for a newly parsed account, and immediate dashboard insight.
 2. **Primary User Edge Case** - Missing critical field handling, account format mismatch resolution, and safe correction flow.
 3. **Owner-Operator Admin** - Local configuration, rule tuning, category management, and quality monitoring.
 4. **Integration User** - Local export/import with both auto-skip and manual conflict-resolution approaches.
@@ -383,9 +383,9 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 
 ### Account & Transaction Ledger Management
 
-- FR1: Users can create a new account by pasting a transaction message and confirming bank and account number.
+- FR1: When a pasted transaction resolves to a non-existing account, users can create that account by confirming bank and account number during save.
 - FR2: System can uniquely identify accounts using a composite key of bank name and account number.
-- FR3: Users can set an opening balance when creating a new account.
+- FR3: During new-account creation triggered by a qualifying save, users can set an opening balance before persistence.
 - FR4: System maintains a going-forward-only transaction ledger.
 - FR5: Users can view current account balance and transaction history.
 

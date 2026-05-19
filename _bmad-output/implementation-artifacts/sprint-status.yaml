@@ -35,11 +35,29 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-19T00:00:00+05:30
+last_updated: 2026-05-19T23:59:00+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+course_corrections:
+  - date: 2026-05-19
+    id: cc-2026-05-19-onboarding-flow
+    scope: moderate
+    status: approved
+    trigger: "App currently forces account creation on clean start; approved behavior is dashboard-first with save-triggered conditional account confirmation."
+    impacted_artifacts:
+      - _bmad-output/planning-artifacts/prd.md
+      - _bmad-output/planning-artifacts/epics.md
+      - _bmad-output/planning-artifacts/ux-design-specification.md
+      - _bmad-output/implementation-artifacts/1-2-create-account-and-opening-balance-setup.md
+      - _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-19.md
+    handoff:
+      recipients:
+        - Product Owner
+        - Developer
+      notes: "Implement onboarding behavior alignment and keep deterministic save/validation guarantees intact."
 
 development_status:
   epic-1: done

@@ -214,18 +214,26 @@ So that my financial workflows run without cloud dependency.
 **Then** the app can run locally in development and build Windows artifacts
 **And** no core feature path requires external network connectivity.
 
-### Story 1.2: Create Account and Opening Balance Setup
+### Story 1.2: Deferred Account Confirmation on First Captured Transaction
 
 As a first-time user,
-I want to create an account from pasted transaction context and set an opening balance,
-So that I can start a reliable, forward-only ledger.
+I want to start from an empty dashboard and only be prompted for account details when save detects a new account,
+So that I can capture transactions with minimal first-run friction while preserving a reliable, forward-only ledger.
 
 **Acceptance Criteria:**
 
-**Given** no account exists for a bank/account-number pair
-**When** I confirm bank and account number and enter opening balance
-**Then** a new account is created using bank+account-number composite uniqueness
-**And** the ledger starts from that opening balance in going-forward-only mode.
+**Given** first launch with no accounts
+**When** I open the app
+**Then** I see an empty dashboard with a paste-ready capture surface.
+
+**Given** I paste a message and click Save
+**When** the parsed account does not exist
+**Then** the system prompts account confirmation and opening balance before persistence
+**And** creates the account with bank+account-number composite uniqueness.
+
+**Given** I paste a message and click Save
+**When** the parsed account already exists and validation passes
+**Then** the transaction is saved directly into that account.
 
 ### Story 1.3: View Account Ledger Baseline
 

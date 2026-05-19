@@ -394,8 +394,12 @@ flowchart TD
   B --> C[Paste transaction message]
   C --> D[System parses critical fields]
   D --> E{Critical fields complete?}
-  E -- Yes --> F[Save the transaction instantly without user confirmation]
-  F --> G[Show success confirmation]
+  E -- Yes --> F[User clicks Save]
+  F --> J{Parsed account exists?}
+  J -- Yes --> G[Show success confirmation]
+  J -- No --> M[Prompt account confirmation and opening balance]
+  M --> N[User confirms details]
+  N --> G
   G --> H[Refresh insight cards]
   H --> I[User sees category and merchant clarity]
   E -- No --> K[Show quick-fix panel]
@@ -696,7 +700,7 @@ All error states use conversational, non-technical language with actionable next
 
 ### Consistency Across Journeys
 
-**All three journeys (Journey 1: instant auto-save, Journey 2: missing field recovery, Journey 3: owner-operator maintenance) follow these patterns:**
+**All three journeys (Journey 1: explicit save-triggered flow with conditional new-account prompt, Journey 2: missing field recovery, Journey 3: owner-operator maintenance) follow these patterns:**
 
 - Validation feedback is progressive and non-blocking until critical fields are complete.
 - Error messages are friendly, specific, and actionable.
@@ -751,7 +755,7 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 
 1. **Executive Summary & Vision** (Step 1-2): Privacy-first, local-first personal finance app. Core interaction is paste → parse → confirm/correct → save → insight. Target user is privacy-conscious individual valuing speed and simplicity over API complexity.
 
-2. **Core Experience Definition** (Step 3): Three critical user journeys mapped: (1) instant auto-save when confidence high, (2) correction flow for missing fields, (3) owner-operator maintenance. Offline-first platform strategy. Keyboard-first interaction model. Effortlessness as primary design principle.
+2. **Core Experience Definition** (Step 3): Three critical user journeys mapped: (1) explicit save-triggered capture with conditional account confirmation for new parsed accounts, (2) correction flow for missing fields, (3) owner-operator maintenance. Offline-first platform strategy. Keyboard-first interaction model. Effortlessness as primary design principle.
 
 3. **Emotional Response Strategy** (Step 4): Confidence is primary goal. Users must feel secure that their financial data is safe, understood, and under their control. Design reinforces trust through transparent validation cues, clear error messaging, and predictable behavior.
 
@@ -759,13 +763,13 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 
 5. **Design System Selection** (Step 6): Themeable utility-first approach with headless component primitives. Balances uniqueness with maintenance simplicity. Supports both current needs and future customization.
 
-6. **Defining Experience Finalized** (Step 7): Paste-and-save is core interaction. Instant auto-save when critical fields complete and confidence meets threshold. Correction panel appears on-demand for missing/ambiguous fields. No hidden state; all validation visible.
+6. **Defining Experience Finalized** (Step 7): Paste-and-save is core interaction with explicit user save action. When save detects a new parsed account, account confirmation and opening balance are requested before commit. Correction panel appears on-demand for missing/ambiguous fields. No hidden state; all validation visible.
 
 7. **Visual Design Foundation** (Step 8): Calm, trustworthy aesthetic. Muted blue-green palette. Humanist sans-serif typography. Airy, spacious layout. Clean visual hierarchy supports financial data comprehension.
 
 8. **Design Direction Decision** (Step 9): D2 (Insight First Canvas) + D5 (Story Cards Rhythm) blend selected. D2 provides two-column layout (capture left, dashboard right). D5 provides narrative-driven insight cards. Combined: efficiency + clarity + trustworthiness.
 
-9. **User Journey Flows** (Step 10): Three Mermaid diagrams define critical paths. Journey 1: instant auto-save workflow (paste → parse → ready → auto-save → insight). Journey 2: missing field recovery (parse → alert → expand correction → fix → ready → save). Journey 3: owner-operator maintenance (transaction review → edit → verify → save). All three follow consistent validation → correction → confirmation pattern.
+9. **User Journey Flows** (Step 10): Three Mermaid diagrams define critical paths. Journey 1: save-triggered workflow (paste → parse → ready → save → account-exists check → conditional account confirmation → insight). Journey 2: missing field recovery (parse → alert → expand correction → fix → ready → save). Journey 3: owner-operator maintenance (transaction review → edit → verify → save). All three follow consistent validation → correction → confirmation pattern.
 
 10. **Component Strategy** (Step 11): Seven custom components defined: TransactionInput, ReadinessStatus, CorrectionPanel, ConfidenceIndicator, StoryCard, InsightSummary, ValidationBadge. Implementation prioritizes behavior over visual polish. Three-phase roadmap: capture components first, then dashboard, then maintenance tools.
 
@@ -791,7 +795,7 @@ This UX Design Specification synthesizes 13 collaborative design workflow steps 
 **Ready for implementation:**
 
 - ✅ **Target user clearly defined**: Privacy-conscious individual, founder-led pilot, desktop-first context, values speed and simplicity.
-- ✅ **Core experience unambiguous**: Paste → parse → confirm/correct → save → insight. Instant auto-save when confidence high. Correction panel on-demand. Dashboard updates in real-time.
+- ✅ **Core experience unambiguous**: Paste → parse → confirm/correct → save → conditional account confirmation for new parsed accounts → insight. Correction panel on-demand. Dashboard updates in real-time.
 - ✅ **Design system specified**: Themeable utility-first with headless primitives. Muted blue-green palette. Humanist sans-serif typography. Airy layout with consistent spacing.
 - ✅ **Interaction patterns comprehensive**: 9 pattern categories defined (validation feedback, button hierarchy, error recovery, form inputs, navigation, focus, success confirmation, empty states, consistency across journeys).
 - ✅ **Visual direction locked**: D2+D5 blend (two-column layout + story cards). No ambiguity on design intention.
