@@ -5,12 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import { isTauri } from "@tauri-apps/api/core";
 
 import App from "../../App";
+import { attemptTransactionSave, parseTransactionMessage } from "../capture/service";
 import { AccountSetupScreen } from "./components/AccountSetupScreen";
-import { createLedgerAccount, getLedgerBaseline } from "./service";
+import { getLedgerBaseline } from "./service";
 
 vi.mock("./service", () => ({
   createLedgerAccount: vi.fn(),
   getLedgerBaseline: vi.fn(),
+}));
+
+vi.mock("../capture/service", () => ({
+  parseTransactionMessage: vi.fn(),
+  attemptTransactionSave: vi.fn(),
 }));
 
 describe("AccountSetupScreen", () => {
@@ -99,15 +105,16 @@ describe("AccountSetupScreen", () => {
 });
 
 describe("Ledger baseline app flow", () => {
-  it("falls back to setup flow when baseline fetch rejects", async () => {
+  it("falls back to dashboard capture shell when baseline fetch rejects", async () => {
     vi.mocked(getLedgerBaseline).mockRejectedValueOnce(new Error("ipc failure"));
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
   });
 
-  it("shows setup flow when no existing account baseline is present", async () => {
+  it("shows dashboard capture shell when no existing account baseline is present", async () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
@@ -119,7 +126,8 @@ describe("Ledger baseline app flow", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
   });
 
   it("shows baseline ledger view for an existing account", async () => {
@@ -150,58 +158,133 @@ describe("Ledger baseline app flow", () => {
     expect(screen.getByText(/hdfc/i)).toBeInTheDocument();
   });
 
-  it("hands off from successful setup to baseline view", async () => {
-    const user = userEvent.setup();
-
-    vi.mocked(getLedgerBaseline)
-      .mockResolvedValueOnce({
-        ok: true,
-        data: {
-          account: null,
-          entries: [],
-          ordering: "created_at_desc_id_desc",
-        },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        data: {
-          account: {
-            id: 3,
-            bankName: "Axis",
-            accountNumber: "3333",
-            currentBalanceMinor: 5000,
-          },
-          entries: [
-            {
-              id: 8,
-              entryKind: "opening_balance",
-              amountMinor: 5000,
-              createdAt: "2026-05-02 10:10:00",
-            },
-          ],
-          ordering: "created_at_desc_id_desc",
-        },
-      });
-
-    vi.mocked(createLedgerAccount).mockResolvedValue({
+  it("does not show account setup before the first save-triggered new-account flow", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
-        accountId: 3,
-        bankName: "Axis",
-        accountNumber: "3333",
-        openingBalanceMinor: 5000,
-        openingEntryId: 8,
+        account: null,
+        entries: [],
+        ordering: "created_at_desc_id_desc",
       },
     });
 
     render(<App />);
 
-    await user.type(await screen.findByLabelText(/bank name/i), "Axis");
-    await user.type(screen.getByLabelText(/account number/i), "3333");
-    await user.type(screen.getByLabelText(/opening balance/i), "50.00");
-    await user.click(screen.getByRole("button", { name: /create account and opening balance/i }));
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+  it("shows account setup only after first save attempt when no account baseline exists", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: null,
+        entries: [],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(parseTransactionMessage).mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        normalizedText:
+          "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        readinessState: "ready",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+
+    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
+    expect(attemptTransactionSave).not.toHaveBeenCalled();
+  });
+
+  it("keeps account setup hidden on save attempt when an account baseline exists", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [
+          {
+            id: 9,
+            entryKind: "opening_balance",
+            amountMinor: 125050,
+            createdAt: "2026-05-02 10:00:00",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(parseTransactionMessage).mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        normalizedText:
+          "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        readinessState: "ready",
+      },
+    });
+
+    vi.mocked(attemptTransactionSave).mockResolvedValue({
+      ok: true,
+      data: {
+        validationState: "passed",
+        acceptedForWrite: false,
+        checkedFields: [
+          "amountMinor",
+          "direction",
+          "transactionDate",
+          "bankName",
+          "accountNumber",
+          "merchantOrPayee",
+        ],
+        message: "Validation passed.",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+
+    await waitFor(() => {
+      expect(attemptTransactionSave).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
   });
 });
 
@@ -229,6 +312,7 @@ describe("Desktop runtime guard", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
   });
 });

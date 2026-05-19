@@ -653,14 +653,17 @@ All error states use conversational, non-technical language with actionable next
 
 ### Success and Confirmation Patterns
 
-**Save Confirmation Pattern (Journey 1 - Instant Auto-Save):**
+**Save Confirmation Pattern (Journey 1 - Explicit Save Trigger):**
 
-- When critical fields complete and confidence >= threshold: auto-save occurs silently without explicit "Save" button press (if user configured instant auto-save mode).
+- User clicks "Save" after parse and validation indicate readiness.
+- System checks parsed account existence at save time:
+  - existing account -> continue with direct save.
+  - new account -> prompt account confirmation and opening balance before commit.
 - On successful save: brief toast notification: "Transaction saved. Refreshing insights..." (2-3 second visibility).
 - TransactionInput clears automatically, ReadinessStatus resets, user ready for next paste.
 - Dashboard updates in real time with new insight; no page reload needed.
 
-**Explicit Save Confirmation Pattern (Journey 2 - User Taps Save):**
+**Explicit Save Confirmation Pattern (Journey 2 - User Clicks Save):**
 
 - User taps "Save" button when ready.
 - Brief loading state: "Saving..." with activity indicator.
@@ -850,7 +853,7 @@ All 13 collaborative workflow steps have been executed, verified for internal co
 
 **Key design decisions are locked in:**
 - Paste-and-save interaction (not multi-step form)
-- Instant auto-save when confidence high (not user confirmation on every save)
+- Explicit save-triggered flow with conditional new-account prompt on save-time detection (not instant auto-save)
 - Progressive disclosure validation patterns (not form-wide error summary)
 - Minimal button text (not descriptive action labels)
 - Friendly error messages (not technical validation language)
