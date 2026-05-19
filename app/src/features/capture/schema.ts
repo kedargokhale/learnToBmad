@@ -29,6 +29,15 @@ export const duplicateDecisionSchema = z.enum([
   "skip-save",
 ]);
 
+export const saveLifecycleStateSchema = z.enum([
+  "idle",
+  "validating",
+  "blocked",
+  "persisting",
+  "success",
+  "failed",
+]);
+
 export const saveGateDecisionDetailsSchema = z.object({
   blockedFields: blockedFieldReasonSchema.array().default([]),
   nextAction: z.string().optional(),
@@ -71,6 +80,7 @@ export type BlockedFieldReason = z.infer<typeof blockedFieldReasonSchema>;
 export type CorrectionMap = z.infer<typeof correctionMapSchema>;
 export type AccountMismatchResolution = z.infer<typeof accountMismatchResolutionSchema>;
 export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;
+export type SaveLifecycleState = z.infer<typeof saveLifecycleStateSchema>;
 export type SaveGateDecisionDetails = z.infer<typeof saveGateDecisionDetailsSchema>;
 
 export function formatCurrency(amountMinor: number | null): string {
@@ -88,6 +98,23 @@ export function computeReadinessLabel(readinessState: ParsePreviewViewModel["rea
       return "Ready for validation";
     case "needs-review":
       return "Needs review before save";
+  }
+}
+
+export function getSaveLifecycleLabel(state: SaveLifecycleState): string {
+  switch (state) {
+    case "idle":
+      return "Idle";
+    case "validating":
+      return "Validating save request";
+    case "blocked":
+      return "Blocked before persistence";
+    case "persisting":
+      return "Persisting transaction and audit trail";
+    case "success":
+      return "Save committed successfully";
+    case "failed":
+      return "Save failed";
   }
 }
 

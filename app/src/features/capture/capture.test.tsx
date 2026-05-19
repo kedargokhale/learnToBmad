@@ -15,6 +15,7 @@ import {
   getFieldDisplayName,
   parsePreviewSchema,
   saveGateDecisionDetailsSchema,
+  type SaveLifecycleState,
   type BlockedFieldReason,
 } from "./schema";
 import type {
@@ -25,6 +26,16 @@ import type {
   SaveTransactionAttemptData,
   SaveTransactionAttemptEnvelope,
 } from "./service";
+
+function createPersistedRecord() {
+  return {
+    transactionId: 42,
+    transactionFingerprint: "persisted-fingerprint-42",
+    transactionCreatedAt: "2026-05-19 12:00:00",
+    auditEntryId: 84,
+    auditCreatedAt: "2026-05-19 12:00:01",
+  };
+}
 
 function CaptureHarness({
   parseMessage,
@@ -37,6 +48,7 @@ function CaptureHarness({
   const [error, setError] = useState<CommandError | null>(null);
   const [saveError, setSaveError] = useState<CommandError | null>(null);
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
+  const [saveLifecycleState, setSaveLifecycleState] = useState<SaveLifecycleState>("idle");
   const [ledgerSnapshot, setLedgerSnapshot] = useState("Ledger entries: 1");
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<"use-selected-account" | "use-parsed-account" | null>(null);
@@ -78,6 +90,7 @@ function CaptureHarness({
           setError(nextError);
           setSaveError(null);
           setSaveResult(null);
+          setSaveLifecycleState("idle");
           setIsCorrectionOpen(false);
           setMismatchResolution(null);
           setDuplicateDecision(null);
@@ -90,8 +103,11 @@ function CaptureHarness({
           }
 
           if (!correctedPreview || blockedFields.length > 0) {
+            setSaveLifecycleState("blocked");
             return;
           }
+
+          setSaveLifecycleState("validating");
 
           const result = await saveAttempt({
             accountContext: {
@@ -107,14 +123,13 @@ function CaptureHarness({
             duplicateDecision,
           });
           if (!result.ok) {
+            setSaveLifecycleState("failed");
             setSaveError(result.error);
             return;
           }
 
-          setSaveResult({
-            ...result.data,
-            validationState: deriveReadinessStateFromBlockedFields(blockedFields) === "ready" ? "passed" : "passed",
-          });
+          setSaveLifecycleState("success");
+          setSaveResult(result.data);
           if (result.data.acceptedForWrite) {
             setLedgerSnapshot("Ledger entries: 2");
           }
@@ -136,10 +151,13 @@ function CaptureHarness({
         duplicateDecision={duplicateDecision}
         onMismatchResolutionChange={(value) => {
           setMismatchResolution(value);
+          setSaveLifecycleState("idle");
         }}
         onDuplicateDecisionChange={(value) => {
           setDuplicateDecision(value);
+          setSaveLifecycleState("idle");
         }}
+        saveLifecycleState={saveLifecycleState}
       />
       <CorrectionPanel
         isOpen={isCorrectionOpen}
@@ -153,6 +171,7 @@ function CaptureHarness({
           }));
           setSaveError(null);
           setSaveResult(null);
+          setSaveLifecycleState("idle");
         }}
         onApply={() => {
           setIsCorrectionOpen(false);
@@ -488,7 +507,7 @@ describe("Capture parse UX", () => {
       ok: true,
       data: {
         validationState: "passed",
-        acceptedForWrite: false,
+        acceptedForWrite: true,
         checkedFields: [
           "amountMinor",
           "direction",
@@ -497,7 +516,8 @@ describe("Capture parse UX", () => {
           "accountNumber",
           "merchantOrPayee",
         ],
-        message: "Validation passed without write in this phase.",
+        message: "Validation passed and the transaction was persisted deterministically.",
+        persistedRecord: createPersistedRecord(),
       },
     });
 
@@ -522,7 +542,8 @@ describe("Capture parse UX", () => {
 
     await user.click(saveButton);
     expect(saveAttempt).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText(/save gate result: passed/i)).toBeInTheDocument();
+    expect(await screen.findByText(/save persisted: passed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/ledger snapshot/i)).toHaveTextContent("Ledger entries: 2");
   });
 
   it("shows deterministic blocked-save details and keeps ledger view unchanged", async () => {
@@ -570,7 +591,7 @@ describe("Capture parse UX", () => {
 
     await user.click(saveButton);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/critical fields are missing or ambiguous/i);
+    expect(screen.getByText(/critical fields are missing or ambiguous/i)).toBeInTheDocument();
     expect(screen.getAllByText(/merchant\/payee/i).length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/ledger snapshot/i)).toHaveTextContent("Ledger entries: 1");
   });
@@ -628,9 +649,10 @@ describe("Capture parse UX", () => {
         ok: true,
         data: {
           validationState: "passed",
-          acceptedForWrite: false,
+          acceptedForWrite: true,
           checkedFields: ["amountMinor", "direction", "transactionDate", "bankName", "accountNumber", "merchantOrPayee"],
-          message: "Validation passed without write in this phase.",
+          message: "Validation passed and the transaction was persisted deterministically.",
+          persistedRecord: createPersistedRecord(),
         },
       });
 
@@ -650,7 +672,7 @@ describe("Capture parse UX", () => {
     expect(saveButton).toBeEnabled();
 
     await user.click(saveButton);
-    expect(await screen.findByText(/save gate result: passed/i)).toBeInTheDocument();
+    expect(await screen.findByText(/save persisted: passed/i)).toBeInTheDocument();
   });
 
   it("requires explicit duplicate decision before retrying save", async () => {
@@ -705,9 +727,10 @@ describe("Capture parse UX", () => {
         ok: true,
         data: {
           validationState: "passed",
-          acceptedForWrite: false,
+          acceptedForWrite: true,
           checkedFields: ["amountMinor", "direction", "transactionDate", "bankName", "accountNumber", "merchantOrPayee"],
-          message: "Validation passed without write in this phase.",
+          message: "Validation passed and the transaction was persisted deterministically.",
+          persistedRecord: createPersistedRecord(),
         },
       });
 

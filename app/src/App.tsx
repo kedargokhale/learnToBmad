@@ -20,6 +20,7 @@ import {
   getFieldDisplayName,
   parsePreviewSchema,
   saveGateDecisionDetailsSchema,
+  type SaveLifecycleState,
   type BlockedFieldReason,
 } from "./features/capture/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
@@ -63,6 +64,7 @@ function App() {
   const [parseError, setParseError] = useState<CommandError | null>(null);
   const [saveError, setSaveError] = useState<CommandError | null>(null);
   const [saveResult, setSaveResult] = useState<SaveTransactionAttemptData | null>(null);
+  const [saveLifecycleState, setSaveLifecycleState] = useState<SaveLifecycleState>("idle");
   const [isSaving, setIsSaving] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
@@ -159,14 +161,17 @@ function App() {
       blockedFields.length > 0 ||
       decisionBlockedReasons.length > 0
     ) {
+      setSaveLifecycleState("blocked");
       return;
     }
 
     setIsSaving(true);
+    setSaveLifecycleState("validating");
     setSaveError(null);
     setSaveResult(null);
 
     try {
+      setSaveLifecycleState("persisting");
       const result = await attemptTransactionSave({
         accountContext: {
           accountId: baseline.account.id,
@@ -182,16 +187,19 @@ function App() {
       });
 
       if (!result.ok) {
+        setSaveLifecycleState("failed");
         setSaveError(result.error);
         return;
       }
 
+      setSaveLifecycleState("success");
       setSaveResult(result.data);
 
       if (result.data.acceptedForWrite) {
         await loadBaseline();
       }
     } catch {
+      setSaveLifecycleState("failed");
       setSaveError({
         code: "PERSISTENCE_ERROR",
         message: "Save validation failed before a deterministic result was produced.",
@@ -235,6 +243,7 @@ function App() {
                 setParseError(error);
                 setSaveError(null);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
                 setIsCorrectionOpen(false);
                 setMismatchResolution(null);
                 setDuplicateDecision(null);
@@ -261,12 +270,15 @@ function App() {
               onMismatchResolutionChange={(value) => {
                 setMismatchResolution(value);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               onDuplicateDecisionChange={(value) => {
                 setDuplicateDecision(value);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               preflightAccountMismatch={preflightAccountMismatch}
+              saveLifecycleState={saveLifecycleState}
             />
             <CorrectionPanel
               isOpen={isCorrectionOpen}
@@ -280,6 +292,7 @@ function App() {
                 }));
                 setSaveError(null);
                 setSaveResult(null);
+                setSaveLifecycleState("idle");
               }}
               onApply={() => {
                 setIsCorrectionOpen(false);

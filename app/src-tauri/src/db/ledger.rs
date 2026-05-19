@@ -10,6 +10,16 @@ pub fn migrations() -> Vec<Migration> {
         description: "create_accounts_and_ledger_entries",
         sql: include_str!("../../migrations/0001_create_accounts_and_ledger_entries.sql"),
         kind: MigrationKind::Up,
+    }, Migration {
+        version: 2,
+        description: "add_capture_transactions",
+        sql: include_str!("../../migrations/0002_add_capture_transactions.sql"),
+        kind: MigrationKind::Up,
+    }, Migration {
+        version: 3,
+        description: "create_capture_audit_trail",
+        sql: include_str!("../../migrations/0003_create_capture_audit_trail.sql"),
+        kind: MigrationKind::Up,
     }]
 }
 

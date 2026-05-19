@@ -51,6 +51,13 @@ export type SaveTransactionAttemptData = {
   acceptedForWrite: boolean;
   checkedFields: ReadonlyArray<BlockedFieldReason["field"]>;
   message: string;
+  persistedRecord: {
+    transactionId: number;
+    transactionFingerprint: string;
+    transactionCreatedAt: string;
+    auditEntryId: number;
+    auditCreatedAt: string;
+  };
 };
 
 export type SaveTransactionAttemptEnvelope = CommandEnvelope<SaveTransactionAttemptData>;
