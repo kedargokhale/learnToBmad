@@ -1,157 +1,165 @@
-# Story 1.2: Create Account and Opening Balance Setup
+# Story 1.2: Deferred Account Confirmation on First Captured Transaction
+
+Status: ready-for-dev
 
 ## Metadata
 - Story Key: 1-2-create-account-and-opening-balance-setup
 - Epic: Epic 1 - Start Private Ledger and Account Baseline
-- Status: done
 - Created: 2026-05-01T11:14:36.4600043+05:30
-- Last Updated: 2026-05-01T11:56:30+05:30
+- Last Updated: 2026-05-19T23:59:00+05:30
 - Source: _bmad-output/planning-artifacts/epics.md
+- Change Driver: _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-19.md
 
 ## Story
 As a first-time user,
-I want to create an account from pasted transaction context and set an opening balance,
-So that I can start a reliable, forward-only ledger.
+I want to start from an empty dashboard and only be prompted for account details when save detects a new account,
+so that I can capture transactions with minimal first-run friction while preserving a reliable, forward-only ledger.
 
 ## Acceptance Criteria
-1. Given no account exists for a bank/account-number pair, when I confirm bank and account number and enter opening balance, then a new account is created using bank+account-number composite uniqueness and the ledger starts from that opening balance in going-forward-only mode.
+1. Given first launch with no accounts, when I open the app, then I see an empty dashboard with a paste-ready capture surface.
+2. Given I paste a message and click Save, when the parsed account does not exist, then the system prompts account confirmation and opening balance before persistence and creates the account with bank+account-number composite uniqueness.
+3. Given I paste a message and click Save, when the parsed account already exists and validation passes, then the transaction is saved directly into that account.
 
-## Correct Course Update (2026-05-19)
-- Approved onboarding correction: first launch should show an empty dashboard with capture surface, not force account setup.
-- Account confirmation and opening-balance entry are now treated as save-triggered, conditional steps when the parsed account does not exist.
-- This note preserves historical implementation context while aligning future development with the approved sprint change proposal.
+## Correct Course Context (2026-05-19)
+- Approved correction: onboarding is dashboard-first, not setup-first.
+- Account creation remains in scope, but only as a save-triggered conditional branch.
+- Existing Story 1.2 implementation data is preserved below as historical context; this file is now the canonical correction guide for re-alignment.
 
 ## Tasks / Subtasks
-- [x] Establish the ledger persistence baseline for account setup (AC: 1)
-  - [x] Add the first SQLite migration and database bootstrap under `app/src-tauri/migrations/` and `app/src-tauri/src/db/` for the minimal account and ledger tables needed by this story.
-  - [x] Use architecture naming rules: snake_case plural tables, snake_case columns, `id` primary keys, and integer minor units for money values.
-  - [x] Enforce composite uniqueness for bank name + account number at the persistence boundary so duplicate account creation fails deterministically.
-  - [x] Preserve the going-forward-only ledger invariant when recording the opening balance; do not rely on silent mutable balance shortcuts.
-- [x] Implement the native ledger command boundary for account creation (AC: 1)
-  - [x] Replace the starter `greet` command path with ledger-focused command modules rooted at `app/src-tauri/src/commands/ledger.rs`.
-  - [x] Return the standardized command envelope: success `{ ok: true, data: ... }`, failure `{ ok: false, error: { code, message, hint?, details? } }`.
-  - [x] Register commands and database initialization through `app/src-tauri/src/lib.rs` without widening native capabilities beyond local-first needs.
-- [x] Build the first-run account setup UI using the planned feature structure (AC: 1)
-  - [x] Replace the starter React demo in `app/src/App.tsx` with a ledger entry surface that confirms bank, account number, and opening balance from pasted transaction context.
-  - [x] Start the feature-first structure under `app/src/features/ledger/` rather than keeping business logic in `App.tsx`.
-  - [x] Add the selected frontend foundations needed by this story where missing: React Hook Form + Zod for form constraints, Zustand only if local ledger setup state needs a shared feature slice, and Tailwind-aligned styling setup if introduced by the implementation.
-  - [x] Keep the first-run flow keyboard-friendly with clear blocked-state reasons and focused correction messaging.
-- [x] Add tests that lock the invariant in place (AC: 1)
-  - [x] Add backend or integration coverage for composite uniqueness and opening-balance ledger initialization.
-  - [x] Add frontend coverage for valid setup, invalid form input, and duplicate account responses mapped from the native error envelope.
-
-### Review Findings
-- [x] [Review][Patch] Use structured SQLite unique-constraint detection instead of brittle message substring matching [app/src-tauri/src/commands/ledger.rs:197]
-- [x] [Review][Patch] Enforce opening-balance upper bounds and align DB constraint with command validation to prevent extreme integer values [app/src-tauri/src/commands/ledger.rs:180]
-- [x] [Review][Patch] Add database-level `amount_minor` range check to match command-level financial bounds [app/src-tauri/migrations/0001_create_accounts_and_ledger_entries.sql:12]
-- [x] [Review][Patch] Ensure SQLite foreign-key enforcement is explicitly enabled on the runtime connection [app/src-tauri/migrations/0001_create_accounts_and_ledger_entries.sql:1]
-- [x] [Review][Patch] Reset/clear success state and form values after successful account creation to avoid stale-success UI state [app/src/features/ledger/components/AccountSetupScreen.tsx:80]
-- [x] [Review][Patch] Add a whitespace-only form input regression test to lock trim-based required validation [app/src/features/ledger/ledger.test.tsx:76]
+- [ ] Align first-run UI contract to dashboard-first behavior (AC: 1)
+  - [ ] Ensure `app/src/App.tsx` keeps account setup hidden on initial load when no baseline account exists.
+  - [ ] Keep empty dashboard copy and paste-ready capture as the first-run default.
+  - [ ] Remove or reword setup-first language in onboarding text and headings.
+- [ ] Enforce save-triggered conditional account prompt (AC: 2)
+  - [ ] Gate account setup prompt behind explicit Save attempt when no matching account exists.
+  - [ ] Ensure save path checks parsed account existence deterministically before opening setup prompt.
+  - [ ] Persist account creation with opening balance only after user confirmation, preserving composite uniqueness and opening-entry invariants.
+- [ ] Preserve direct existing-account save path (AC: 3)
+  - [ ] Keep existing-account route in `attempt_transaction_save` without showing account setup prompt.
+  - [ ] Preserve mismatch and duplicate decision gates from Story 2.4.
+  - [ ] Preserve deterministic save-state transitions and audit-trail guarantees from Story 2.5.
+- [ ] Close UX contract conflicts (AC: 1, 2, 3)
+  - [ ] Ensure runtime behavior follows explicit Save-only flow.
+  - [ ] Avoid any implicit or automatic save behavior in Journey 1 runtime.
+- [ ] Add regression coverage for corrected onboarding contract (AC: 1, 2, 3)
+  - [ ] Keep and extend `app/src/features/ledger/ledger.test.tsx` for: no prompt on load, prompt on first save with no account, no prompt when account exists.
+  - [ ] Add backend tests for account-exists decision behavior if command boundary evolves.
 
 ## Dev Notes
 
 ### Story Intent
-- This is the first real domain story after the starter scaffold. The codebase still contains the default Tauri greeting UI and a single `greet` command, so this story should establish the first ledger-shaped vertical slice rather than layering new logic onto the starter demo.
-- The outcome is a first-run account setup path that anchors the ledger safely and becomes the base for Story 1.3 ledger viewing.
+- This is a correction story, not a greenfield story.
+- Primary objective: keep completed integrity work and re-align onboarding trigger semantics.
+- Do not reintroduce setup-first flow through UI text, branching, or tests.
 
 ### Relevant Requirements
-- FR1-FR4 drive this story: create account from pasted context, composite account identity, opening balance setup, and a going-forward-only ledger model.
-- NFR10 and NFR12 are the main integrity constraints here: no unsafe writes and no silent mutation.
-- PRD first-run journey expects account confirmation and opening balance entry before the user sees downstream insight value.
+- FR1: account creation for non-existing parsed account during save flow.
+- FR3: opening balance entry during save-triggered new-account creation.
+- FR4: going-forward-only ledger invariants remain unchanged.
+- FR11, FR13, FR14: strict save validation, guided correction, deterministic state transitions.
+- NFR10, NFR12, NFR13, NFR14: zero unsafe writes, no silent mutation, deterministic outcomes.
 
-### Current Codebase Reality
-- `app/src/App.tsx` is still the starter Tauri greeting form and should not remain the long-term implementation surface.
-- `app/src/main.tsx` only mounts `App` with no routing or providers yet.
-- `app/src-tauri/src/lib.rs` currently registers only `greet` and the SQL/opener plugins.
-- `app/src-tauri/Cargo.toml` already includes `tauri-plugin-sql` with SQLite support, so this story should build on that instead of reworking Story 1.1 scaffolding.
-- `app/package.json` does not yet include the architecture-selected UI/form/state libraries beyond React and Tauri APIs.
+### Current Codebase Reality (Read Before Editing)
+- `app/src/App.tsx`
+  - Current state: first-run baseline can render empty dashboard and only opens `AccountSetupScreen` after save attempt when no baseline account exists.
+  - Story change: make account-existence check explicit against parsed account identity, not just baseline presence.
+  - Must preserve: save lifecycle state machine, correction flow, mismatch/duplicate decisions, desktop runtime guard.
+- `app/src/features/ledger/components/AccountSetupScreen.tsx`
+  - Current state: setup-first copy still says "First-run ledger setup" and assumes initial setup framing.
+  - Story change: reframe as conditional account confirmation dialog/surface triggered by save-time detection.
+  - Must preserve: RHF+Zod validation, blocked reasons, duplicate-account envelope handling.
+- `app/src/features/ledger/ledger.test.tsx`
+  - Current state: already includes save-triggered prompt regression coverage.
+  - Story change: strengthen assertions for parsed-account existence branch and ensure no setup-first fallback regressions.
+  - Must preserve: existing tests proving hidden prompt on load and visible prompt only after first save attempt in no-account state.
+- `app/src-tauri/src/commands/capture.rs`
+  - Current state: deterministic validation and persistence path expects resolved account context, with mismatch and duplicate gates.
+  - Story change: support explicit "parsed account does not exist" signaling if needed by frontend orchestration.
+  - Must preserve: atomic persistence, deterministic fingerprinting, duplicate-skip behavior, audit trail writes.
+- `app/src-tauri/src/commands/ledger.rs`
+  - Current state: `create_account` enforces composite uniqueness and opening-balance invariants.
+  - Story change: no weakening of uniqueness, validation bounds, or error envelope contracts.
+  - Must preserve: deterministic duplicate rejection and transactionally consistent account+opening-entry writes.
 
-### Architecture Guardrails
-- Keep all persistence concerns inside `app/src-tauri/migrations/` and `app/src-tauri/src/db/`.
-- Put account and ledger native commands under `app/src-tauri/src/commands/ledger.rs`.
-- Put frontend ledger code under `app/src/features/ledger/` with `schema.ts`, `service.ts`, `store.ts`, and `selectors.ts` patterns where they are needed.
-- Keep UI/native contracts typed and map persistence snake_case to UI camelCase at the boundary.
-- Never surface raw native errors directly to the UI.
-- Keep all financial data local-first; no network dependency or remote API path is allowed.
+### Architecture Compliance Guardrails
+- Keep typed frontend-to-Tauri command boundary and standardized envelope contracts.
+- Keep all persistence and uniqueness guarantees in native command + DB layer.
+- Respect feature boundaries:
+  - account and ledger behavior in `src/features/ledger/` and `src-tauri/src/commands/ledger.rs`
+  - capture/save orchestration in `src/features/capture/` and `src-tauri/src/commands/capture.rs`
+- No external network calls for core flow.
+
+### Library and Framework Requirements
+- Use existing stack only; do not introduce new state/form frameworks.
+- Frontend: React 19, React Hook Form 7.x, Zod 4.x.
+- Native: Tauri v2 commands, SQLx 0.8.x transaction boundaries.
+- Keep command names unique and registered via single `generate_handler!` surface.
+
+### Latest Technical Information
+- Tauri v2 docs confirm command names must be unique and commands are invoked by string name from frontend.
+- SQLx 0.8 docs confirm transaction should end with commit or rollback; rollback occurs on drop if still in progress.
+- React 19 `useState` behavior is batched/snapshot-based; do not depend on immediate post-set state reads inside event handlers.
 
 ### UX Guardrails
-- The first useful flow is: open app, see paste-ready surface, confirm fields that matter, enter opening balance, save safely.
-- Safety gates must explain what is missing and why; blocked states cannot be generic.
-- Keep the interaction keyboard-first and deterministic.
-- Prefer a focused first-run setup surface over a dense multi-panel screen.
+- First launch UX must be empty dashboard + paste-ready capture.
+- Journey 1 must use explicit save-triggered branching for account confirmation.
+- Any wording or behavior suggesting implicit auto-save is out of scope for this corrected story.
+- Keep blocked-save reasons explicit and actionable.
 
-### Suggested Implementation Shape
-- Create the minimal vertical slice needed for this story instead of trying to realize the whole target architecture at once.
-- A reasonable slice is:
-  - database init + first migration
-  - ledger/account command module
-  - minimal typed service on the frontend that invokes account-creation commands
-  - account setup form with validation and success/error states
-- Defer non-essential dashboard, categorization, parser breadth, and import/export concerns to later stories.
+### Testing Requirements
+- Frontend regression tests for onboarding branch conditions are mandatory.
+- Save-time branch tests must prove all three AC paths.
+- Preserve existing Story 2.1-2.5 behavior and tests; this story must not regress deterministic save and audit behavior.
 
-### Testing Notes
-- Validate duplicate account rejection at the database-backed path, not just with frontend form checks.
-- Validate opening balance handling with integer minor units to avoid floating-point drift.
-- Verify app restart compatibility where practical so Story 1.3 can rely on persisted account state.
+### Previous Story Intelligence (Story 1.1)
+- Story 1.1 established local-first desktop foundation and no-network core flow.
+- Correction work must build on current foundation, not re-scaffold runtime, tooling, or packaging setup.
 
-### Project Structure Notes
-- The architecture target structure is ahead of the current repository state. Create only the directories and files needed for Story 1.2, but align names and boundaries with the architecture document so later stories extend rather than rename.
-- Avoid spreading ledger domain logic across `App.tsx`, random shared utilities, and inline Tauri command strings. Establish one clean path now.
+### Git Intelligence Summary
+- Recent commits are concentrated on Story 2.5 deterministic save and review patches.
+- Correction implementation should leverage current save pipeline instead of building parallel onboarding logic.
+
+### Project Context Reference
+- No project-context.md file was discovered.
 
 ### References
-- `_bmad-output/planning-artifacts/epics.md` - Epic 1 / Story 1.2
-- `_bmad-output/planning-artifacts/prd.md` - Journey 1, Account & Transaction Ledger Management, Project Scoping
-- `_bmad-output/planning-artifacts/architecture.md` - Core Architectural Decisions, Project Structure & Boundaries, Implementation Patterns & Consistency Rules
-- `_bmad-output/planning-artifacts/ux-design-specification.md` - Journey 1: First Useful Insight in Minutes, Journey Patterns, Flow Optimization Principles
-- `_bmad-output/implementation-artifacts/1-1-set-up-initial-project-from-starter-template.md` - previous story baseline
+- _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-19.md
+- _bmad-output/planning-artifacts/epics.md
+- _bmad-output/planning-artifacts/prd.md
+- _bmad-output/planning-artifacts/architecture.md
+- _bmad-output/planning-artifacts/ux-design-specification.md
+- _bmad-output/implementation-artifacts/1-1-set-up-initial-project-from-starter-template.md
+- app/src/App.tsx
+- app/src/features/ledger/components/AccountSetupScreen.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/features/ledger/service.ts
+- app/src/features/capture/service.ts
+- app/src-tauri/src/commands/capture.rs
+- app/src-tauri/src/commands/ledger.rs
+
+## Story Completion Status
+- Status set to: ready-for-dev
+- Completion note: Ultimate context engine analysis completed - comprehensive developer correction guide created for approved sprint change proposal.
+
+## Historical Implementation Snapshot
+- 2026-05-01 implementation delivered setup-first Story 1.2 behavior with strong ledger invariants and tests.
+- 2026-05-19 course-correction approved to defer account confirmation until first qualifying save.
+- This section preserves historical facts while the active story contract above governs future implementation.
 
 ## Dev Agent Record
 
 ### Agent Model Used
-
-GPT-5.4
+GPT-5.3-Codex
 
 ### Debug Log References
-
-- Sprint status reviewed before story creation.
-- Current app surface inspected to anchor implementation notes to the real codebase.
-- Native ledger command, migration registration, and SQL capability scope implemented for the first persistence slice.
-- Frontend account setup form built under the ledger feature boundary with RHF + Zod and mapped native error handling.
-- Validation completed with `cargo test`, `pnpm test`, and `pnpm build`.
+- Workflow activation resolved from skill customization.
+- Sprint status, epics, PRD, architecture, UX, previous story artifact, implementation files, and recent git commits analyzed.
+- Story rewritten as correction-focused ready-for-dev context.
 
 ### Completion Notes List
-
-- Story context created from Epic 1, PRD, architecture, UX, and current repository state.
-- Story is ready for development.
-- Added the first SQLite migration, preload configuration, and typed DB access for local ledger account setup.
-- Implemented `create_account` native command with deterministic duplicate rejection and explicit opening-balance ledger entry creation.
-- Replaced the starter React demo with a first-run account setup screen under `src/features/ledger/` using React Hook Form + Zod.
-- Added backend tests for opening-balance initialization and composite uniqueness, plus frontend tests for valid submit, invalid amount input, and duplicate-account responses.
+- Reframed Story 1.2 to deferred account confirmation on first captured transaction.
+- Captured code-level guardrails for update files that must be touched and behavior that must be preserved.
+- Added explicit anti-regression constraints to protect Story 2 deterministic save and audit behavior.
 
 ### File List
-
 - _bmad-output/implementation-artifacts/1-2-create-account-and-opening-balance-setup.md
-- app/package.json
-- app/pnpm-lock.yaml
-- app/src/App.css
-- app/src/App.tsx
-- app/src/features/ledger/components/AccountSetupScreen.tsx
-- app/src/features/ledger/ledger.test.tsx
-- app/src/features/ledger/schema.ts
-- app/src/features/ledger/service.ts
-- app/src/test/setup.ts
-- app/src-tauri/Cargo.toml
-- app/src-tauri/capabilities/default.json
-- app/src-tauri/migrations/0001_create_accounts_and_ledger_entries.sql
-- app/src-tauri/src/commands/ledger.rs
-- app/src-tauri/src/commands/mod.rs
-- app/src-tauri/src/db/ledger.rs
-- app/src-tauri/src/db/mod.rs
-- app/src-tauri/src/lib.rs
-- app/src-tauri/tauri.conf.json
-- app/vitest.config.ts
-
-### Change Log
-
-- 2026-05-01: Created Story 1.2 context file and marked the story ready-for-dev.
-- 2026-05-01: Implemented account setup persistence, native ledger command envelope, first-run setup UI, and validation coverage; story moved to review.

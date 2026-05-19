@@ -67,6 +67,7 @@ function App() {
   const [saveLifecycleState, setSaveLifecycleState] = useState<SaveLifecycleState>("idle");
   const [isSaving, setIsSaving] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  const [isAccountSetupPromptOpen, setIsAccountSetupPromptOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateDecision | null>(null);
   const [correctionMap, setCorrectionMap] = useState<
@@ -161,12 +162,13 @@ function App() {
   }, []);
 
   const runSaveAttempt = useCallback(async () => {
-    if (
-      !baseline?.account ||
-      !correctedPreview ||
-      blockedFields.length > 0 ||
-      decisionBlockedReasons.length > 0
-    ) {
+    if (!correctedPreview || blockedFields.length > 0 || decisionBlockedReasons.length > 0) {
+      setSaveLifecycleState("blocked");
+      return;
+    }
+
+    if (!baseline?.account) {
+      setIsAccountSetupPromptOpen(true);
       setSaveLifecycleState("blocked");
       return;
     }
@@ -241,79 +243,90 @@ function App() {
 
   return (
     <main className="app-shell app-shell--stacked">
+      <section className="capture-grid" aria-label="Transaction capture parse preview">
+        <TransactionInput
+          onPreviewChange={(preview, error) => {
+            setParsePreview(preview);
+            setParseError(error);
+            setSaveError(null);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+            setIsCorrectionOpen(false);
+            setMismatchResolution(null);
+            setDuplicateDecision(null);
+            setCorrectionMap({});
+          }}
+          onAttemptSave={runSaveAttempt}
+          saveBlockedReasons={saveBlockedReasons}
+          isSaving={isSaving}
+        />
+        <ReadinessStatus
+          preview={correctedPreview}
+          error={parseError}
+          saveError={saveError}
+          saveResult={saveResult}
+          blockedFields={blockedFields}
+          onOpenCorrection={() => {
+            if (blockedFields.length > 0) {
+              setIsCorrectionOpen(true);
+            }
+          }}
+          hasCorrectionsApplied={hasCorrectionsApplied}
+          mismatchResolution={mismatchResolution}
+          duplicateDecision={duplicateDecision}
+          onMismatchResolutionChange={(value) => {
+            setMismatchResolution(value);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+          }}
+          onDuplicateDecisionChange={(value) => {
+            setDuplicateDecision(value);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+          }}
+          preflightAccountMismatch={preflightAccountMismatch}
+          saveLifecycleState={saveLifecycleState}
+        />
+        <CorrectionPanel
+          isOpen={isCorrectionOpen}
+          blockedFields={blockedFields}
+          preview={correctedPreview}
+          correctionValues={correctionMap}
+          onCorrectionChange={(field, value) => {
+            setCorrectionMap((current) => ({
+              ...current,
+              [field]: value,
+            }));
+            setSaveError(null);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+          }}
+          onApply={() => {
+            setIsCorrectionOpen(false);
+          }}
+          onClose={() => {
+            setIsCorrectionOpen(false);
+          }}
+        />
+      </section>
+
       {baseline?.account ? (
-        <>
-          <section className="capture-grid" aria-label="Transaction capture parse preview">
-            <TransactionInput
-              onPreviewChange={(preview, error) => {
-                setParsePreview(preview);
-                setParseError(error);
-                setSaveError(null);
-                setSaveResult(null);
-                setSaveLifecycleState("idle");
-                setIsCorrectionOpen(false);
-                setMismatchResolution(null);
-                setDuplicateDecision(null);
-                setCorrectionMap({});
-              }}
-              onAttemptSave={runSaveAttempt}
-              saveBlockedReasons={saveBlockedReasons}
-              isSaving={isSaving}
-            />
-            <ReadinessStatus
-              preview={correctedPreview}
-              error={parseError}
-              saveError={saveError}
-              saveResult={saveResult}
-              blockedFields={blockedFields}
-              onOpenCorrection={() => {
-                if (blockedFields.length > 0) {
-                  setIsCorrectionOpen(true);
-                }
-              }}
-              hasCorrectionsApplied={hasCorrectionsApplied}
-              mismatchResolution={mismatchResolution}
-              duplicateDecision={duplicateDecision}
-              onMismatchResolutionChange={(value) => {
-                setMismatchResolution(value);
-                setSaveResult(null);
-                setSaveLifecycleState("idle");
-              }}
-              onDuplicateDecisionChange={(value) => {
-                setDuplicateDecision(value);
-                setSaveResult(null);
-                setSaveLifecycleState("idle");
-              }}
-              preflightAccountMismatch={preflightAccountMismatch}
-              saveLifecycleState={saveLifecycleState}
-            />
-            <CorrectionPanel
-              isOpen={isCorrectionOpen}
-              blockedFields={blockedFields}
-              preview={correctedPreview}
-              correctionValues={correctionMap}
-              onCorrectionChange={(field, value) => {
-                setCorrectionMap((current) => ({
-                  ...current,
-                  [field]: value,
-                }));
-                setSaveError(null);
-                setSaveResult(null);
-                setSaveLifecycleState("idle");
-              }}
-              onApply={() => {
-                setIsCorrectionOpen(false);
-              }}
-              onClose={() => {
-                setIsCorrectionOpen(false);
-              }}
-            />
-          </section>
-          <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
-        </>
+        <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
       ) : (
-        <AccountSetupScreen onAccountCreated={loadBaseline} />
+        <section className="ledger-card" aria-live="polite">
+          <h2>No transactions yet.</h2>
+          <p className="section-copy">Paste your first bank message and run save validation to continue.</p>
+        </section>
       )}
+
+      {isAccountSetupPromptOpen && !baseline?.account ? (
+        <AccountSetupScreen
+          onAccountCreated={async () => {
+            await loadBaseline();
+            setIsAccountSetupPromptOpen(false);
+          }}
+        />
+      ) : null}
     </main>
   );
 }
