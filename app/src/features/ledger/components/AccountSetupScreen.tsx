@@ -92,11 +92,12 @@ export function AccountSetupScreen({
   return (
     <section className="ledger-screen">
       <div className="ledger-hero">
-        <span className="eyebrow">First-run ledger setup</span>
-        <h1>Confirm the account once. Start the ledger from a known balance.</h1>
+        <span className="eyebrow">Save-triggered account confirmation</span>
+        <h1>Confirm the account and opening balance before the first write.</h1>
         <p className="lede">
-          This setup creates one local account record and one opening balance entry. Nothing is saved
-          until the bank, account number, and starting amount are explicit.
+          This confirmation surface appears only when save detects a new account identity. It creates one
+          local account record and one opening balance entry after the bank, account number, and starting
+          amount are explicit.
         </p>
 
         <ul className="hero-points" aria-label="Safety checks included in this flow">
@@ -125,9 +126,9 @@ export function AccountSetupScreen({
       </div>
 
       <div className="ledger-card">
-        <h2>Account setup</h2>
+        <h2>Account confirmation</h2>
         <p className="section-copy">
-          Use the confirmed details from the pasted transaction context. The save action stays local and
+          Use the confirmed details from the pasted transaction context. Confirmation stays local and
           deterministic.
         </p>
 

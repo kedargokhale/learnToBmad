@@ -39,6 +39,10 @@ function normalizeCompareText(value: string): string {
     .join("");
 }
 
+function hasParsedAccountIdentity(preview: ParsePreviewData | null): boolean {
+  return Boolean(preview?.bankName?.trim() && preview?.accountNumber?.trim());
+}
+
 function UnsupportedRuntimeScreen() {
   return (
     <main className="app-shell">
@@ -167,8 +171,13 @@ function App() {
       return;
     }
 
-    if (!baseline?.account) {
+    if (!baseline?.account && hasParsedAccountIdentity(correctedPreview)) {
       setIsAccountSetupPromptOpen(true);
+      setSaveLifecycleState("blocked");
+      return;
+    }
+
+    if (!baseline?.account) {
       setSaveLifecycleState("blocked");
       return;
     }
@@ -315,7 +324,7 @@ function App() {
       ) : (
         <section className="ledger-card" aria-live="polite">
           <h2>No transactions yet.</h2>
-          <p className="section-copy">Paste your first bank message and run save validation to continue.</p>
+          <p className="section-copy">Paste your first bank message to begin. Save validation will confirm the account only when a new account is detected.</p>
         </section>
       )}
 
