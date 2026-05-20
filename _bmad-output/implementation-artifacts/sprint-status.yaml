@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-20T11:10:00+05:30
+last_updated: 2026-05-20T12:09:04.5820023+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
@@ -75,15 +75,15 @@ development_status:
   2-5-deterministic-save-state-machine-and-audit-trail: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-day-1-category-taxonomy-and-suggested-categorization: backlog
+  epic-3: in-progress
+  3-1-day-1-category-taxonomy-and-suggested-categorization: ready-for-dev
   3-2-learning-from-category-corrections: backlog
-  3-3-category-and-merchant-insight-cards: backlog
-  3-4-trend-alerts-and-running-balance-visualization: backlog
-  3-5-capture-surface-and-readiness-state-components: backlog
+  3-3-category-and-merchant-insight-cards: ready-for-dev
+  3-4-trend-alerts-and-running-balance-visualization: ready-for-dev
+  3-5-capture-surface-and-readiness-state-components: ready-for-dev
   3-6-correction-and-confidence-guidance-components: backlog
-  3-7-insight-summary-story-components: backlog
-  3-8-progressive-disclosure-and-confirmation-feedback: backlog
+  3-7-insight-summary-story-components: ready-for-dev
+  3-8-progressive-disclosure-and-confirmation-feedback: ready-for-dev
   epic-3-retrospective: optional
 
   epic-4: backlog
