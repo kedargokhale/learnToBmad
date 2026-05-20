@@ -1,6 +1,6 @@
 # Story 1.2: Deferred Account Confirmation on First Captured Transaction
 
-Status: ready-for-dev
+Status: done
 
 ## Metadata
 - Story Key: 1-2-create-account-and-opening-balance-setup
@@ -26,24 +26,24 @@ so that I can capture transactions with minimal first-run friction while preserv
 - Existing Story 1.2 implementation data is preserved below as historical context; this file is now the canonical correction guide for re-alignment.
 
 ## Tasks / Subtasks
-- [ ] Align first-run UI contract to dashboard-first behavior (AC: 1)
-  - [ ] Ensure `app/src/App.tsx` keeps account setup hidden on initial load when no baseline account exists.
-  - [ ] Keep empty dashboard copy and paste-ready capture as the first-run default.
-  - [ ] Remove or reword setup-first language in onboarding text and headings.
-- [ ] Enforce save-triggered conditional account prompt (AC: 2)
-  - [ ] Gate account setup prompt behind explicit Save attempt when no matching account exists.
-  - [ ] Ensure save path checks parsed account existence deterministically before opening setup prompt.
-  - [ ] Persist account creation with opening balance only after user confirmation, preserving composite uniqueness and opening-entry invariants.
-- [ ] Preserve direct existing-account save path (AC: 3)
-  - [ ] Keep existing-account route in `attempt_transaction_save` without showing account setup prompt.
-  - [ ] Preserve mismatch and duplicate decision gates from Story 2.4.
-  - [ ] Preserve deterministic save-state transitions and audit-trail guarantees from Story 2.5.
-- [ ] Close UX contract conflicts (AC: 1, 2, 3)
-  - [ ] Ensure runtime behavior follows explicit Save-only flow.
-  - [ ] Avoid any implicit or automatic save behavior in Journey 1 runtime.
-- [ ] Add regression coverage for corrected onboarding contract (AC: 1, 2, 3)
-  - [ ] Keep and extend `app/src/features/ledger/ledger.test.tsx` for: no prompt on load, prompt on first save with no account, no prompt when account exists.
-  - [ ] Add backend tests for account-exists decision behavior if command boundary evolves.
+- [x] Align first-run UI contract to dashboard-first behavior (AC: 1)
+  - [x] Ensure `app/src/App.tsx` keeps account setup hidden on initial load when no baseline account exists.
+  - [x] Keep empty dashboard copy and paste-ready capture as the first-run default.
+  - [x] Remove or reword setup-first language in onboarding text and headings.
+- [x] Enforce save-triggered conditional account prompt (AC: 2)
+  - [x] Gate account setup prompt behind explicit Save attempt when no matching account exists.
+  - [x] Ensure save path checks parsed account existence deterministically before opening setup prompt.
+  - [x] Persist account creation with opening balance only after user confirmation, preserving composite uniqueness and opening-entry invariants.
+- [x] Preserve direct existing-account save path (AC: 3)
+  - [x] Keep existing-account route in `attempt_transaction_save` without showing account setup prompt.
+  - [x] Preserve mismatch and duplicate decision gates from Story 2.4.
+  - [x] Preserve deterministic save-state transitions and audit-trail guarantees from Story 2.5.
+- [x] Close UX contract conflicts (AC: 1, 2, 3)
+  - [x] Ensure runtime behavior follows explicit Save-only flow.
+  - [x] Avoid any implicit or automatic save behavior in Journey 1 runtime.
+- [x] Add regression coverage for corrected onboarding contract (AC: 1, 2, 3)
+  - [x] Keep and extend `app/src/features/ledger/ledger.test.tsx` for: no prompt on load, prompt on first save with no account, no prompt when account exists.
+  - [x] Add backend tests for account-exists decision behavior if command boundary evolves.
 
 ## Dev Notes
 
@@ -138,8 +138,8 @@ so that I can capture transactions with minimal first-run friction while preserv
 - app/src-tauri/src/commands/ledger.rs
 
 ## Story Completion Status
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer correction guide created for approved sprint change proposal.
+- Status set to: review
+- Completion note: Story implementation completed for the deferred account confirmation flow. The dashboard now stays first-run friendly, account confirmation appears only on save-triggered new-account detection, and regression coverage protects the corrected onboarding contract.
 
 ## Historical Implementation Snapshot
 - 2026-05-01 implementation delivered setup-first Story 1.2 behavior with strong ledger invariants and tests.
@@ -155,11 +155,25 @@ GPT-5.3-Codex
 - Workflow activation resolved from skill customization.
 - Sprint status, epics, PRD, architecture, UX, previous story artifact, implementation files, and recent git commits analyzed.
 - Story rewritten as correction-focused ready-for-dev context.
+- Reworded the onboarding surface to remove setup-first framing and keep the first-run dashboard paste-ready.
+- Added an explicit parsed-account identity check before opening the account confirmation surface on save.
+- Extended frontend regression coverage to assert the deferred confirmation heading and preserve the existing-account save path.
+- Validated with `pnpm vitest run src/features/ledger/ledger.test.tsx`, `pnpm vitest run`, and `pnpm build`.
 
 ### Completion Notes List
 - Reframed Story 1.2 to deferred account confirmation on first captured transaction.
 - Captured code-level guardrails for update files that must be touched and behavior that must be preserved.
 - Added explicit anti-regression constraints to protect Story 2 deterministic save and audit behavior.
+- Updated `app/src/App.tsx` so first-run remains dashboard-first, with save-time prompting guarded by parsed account identity.
+- Reworded `AccountSetupScreen` to an account confirmation surface instead of a first-run setup flow.
+- Extended `app/src/features/ledger/ledger.test.tsx` to assert the new copy and preserve no-prompt/load and existing-account flows.
+- Confirmed the app test suite and build pass after the change.
 
 ### File List
 - _bmad-output/implementation-artifacts/1-2-create-account-and-opening-balance-setup.md
+- app/src/App.tsx
+- app/src/features/ledger/components/AccountSetupScreen.tsx
+- app/src/features/ledger/ledger.test.tsx
+
+### Change Log
+- 2026-05-20: Re-aligned Story 1.2 onboarding to dashboard-first behavior and deferred account confirmation to save-time detection.

@@ -35,6 +35,8 @@ describe("AccountSetupScreen", () => {
 
     render(<AccountSetupScreen submitAccount={submitAccount} />);
 
+    expect(screen.getByRole("heading", { name: /account confirmation/i })).toBeInTheDocument();
+
     await user.type(screen.getByLabelText(/bank name/i), "HDFC");
     await user.type(screen.getByLabelText(/account number/i), "1234");
     await user.type(screen.getByLabelText(/opening balance/i), "1250.50");
@@ -205,13 +207,14 @@ describe("Ledger baseline app flow", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
     await user.click(await screen.findByRole("button", { name: /run save validation/i }));
 
-    expect(await screen.findByRole("heading", { name: /account setup/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /account confirmation/i })).toBeInTheDocument();
+    expect(screen.queryByText(/first-run ledger setup/i)).not.toBeInTheDocument();
     expect(attemptTransactionSave).not.toHaveBeenCalled();
   });
 
@@ -275,7 +278,7 @@ describe("Ledger baseline app flow", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
@@ -284,7 +287,7 @@ describe("Ledger baseline app flow", () => {
     await waitFor(() => {
       expect(attemptTransactionSave).toHaveBeenCalledTimes(1);
     });
-    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
   });
 });
 
@@ -313,6 +316,6 @@ describe("Desktop runtime guard", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: /paste-to-parse capture/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /account setup/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
   });
 });
