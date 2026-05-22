@@ -1,12 +1,21 @@
+import { useState } from "react";
 import type { LedgerBaselineData } from "../service";
+import {
+  CATEGORY_TAXONOMY,
+  categoryLabel,
+  type CategoryCode,
+} from "../../categorization/schema";
 
 type LedgerBaselineViewProps = {
   baseline: LedgerBaselineData;
   onRefresh?: () => Promise<void>;
+  onUpdateCategory?: (transactionId: number, finalCategory: CategoryCode) => Promise<void>;
 };
 
-export function LedgerBaselineView({ baseline, onRefresh }: LedgerBaselineViewProps) {
+export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: LedgerBaselineViewProps) {
   const account = baseline.account;
+  const [draftCategories, setDraftCategories] = useState<Record<number, CategoryCode>>({});
+  const [updatingTransactionId, setUpdatingTransactionId] = useState<number | null>(null);
 
   if (!account) {
     return null;
@@ -68,6 +77,56 @@ export function LedgerBaselineView({ baseline, onRefresh }: LedgerBaselineViewPr
                 <div>
                   <strong>{humanizeEntryKind(entry.entryKind)}</strong>
                   <div className="history-meta">Entry #{entry.id} - {entry.createdAt}</div>
+                  {entry.finalCategory ? (
+                    <div className="history-meta">
+                      Category: {categoryLabel(entry.finalCategory)} ({entry.categorySource ?? "suggested"})
+                    </div>
+                  ) : null}
+                  {entry.entryKind === "capture_transaction" && entry.captureTransactionId && onUpdateCategory ? (
+                    <div className="submit-row" style={{ marginTop: 8 }}>
+                      <select
+                        value={draftCategories[entry.id] ?? (entry.finalCategory as CategoryCode) ?? "other"}
+                        disabled={updatingTransactionId === entry.captureTransactionId}
+                        onChange={(event) => {
+                          setDraftCategories((current) => ({
+                            ...current,
+                            [entry.id]: event.target.value as CategoryCode,
+                          }));
+                        }}
+                        aria-label={`Category for transaction ${entry.captureTransactionId}`}
+                      >
+                        {CATEGORY_TAXONOMY.map((category) => (
+                          <option key={category.code} value={category.code}>
+                            {category.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        disabled={updatingTransactionId === entry.captureTransactionId}
+                        onClick={async () => {
+                          if (!entry.captureTransactionId || updatingTransactionId === entry.captureTransactionId) {
+                            return;
+                          }
+
+                          const nextCategory =
+                            draftCategories[entry.id] ??
+                            (entry.finalCategory as CategoryCode) ??
+                            "other";
+
+                          setUpdatingTransactionId(entry.captureTransactionId);
+                          try {
+                            await onUpdateCategory(entry.captureTransactionId as number, nextCategory);
+                          } finally {
+                            setUpdatingTransactionId(null);
+                          }
+                        }}
+                      >
+                        Update category
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="history-amount">{formatMinorUnits(entry.amountMinor)}</div>
               </li>

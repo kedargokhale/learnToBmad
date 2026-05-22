@@ -7,11 +7,12 @@ import { isTauri } from "@tauri-apps/api/core";
 import App from "../../App";
 import { attemptTransactionSave, parseTransactionMessage } from "../capture/service";
 import { AccountSetupScreen } from "./components/AccountSetupScreen";
-import { getLedgerBaseline } from "./service";
+import { getLedgerBaseline, updateCaptureTransactionCategory } from "./service";
 
 vi.mock("./service", () => ({
   createLedgerAccount: vi.fn(),
   getLedgerBaseline: vi.fn(),
+  updateCaptureTransactionCategory: vi.fn(),
 }));
 
 vi.mock("../capture/service", () => ({
@@ -200,6 +201,9 @@ describe("Ledger baseline app flow", () => {
         bankName: "HDFC Bank",
         accountNumber: "XX1234",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "groceries",
+        finalCategory: "groceries",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -254,6 +258,9 @@ describe("Ledger baseline app flow", () => {
         bankName: "HDFC Bank",
         accountNumber: "XX1234",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "groceries",
+        finalCategory: "groceries",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -288,6 +295,204 @@ describe("Ledger baseline app flow", () => {
       expect(attemptTransactionSave).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
+  });
+
+  it("supports post-save category override from ledger history", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 10000,
+        },
+        entries: [
+          {
+            id: 101,
+            entryKind: "capture_transaction",
+            amountMinor: -5000,
+            createdAt: "2026-05-02 10:00:00",
+            captureTransactionId: 1,
+            finalCategory: "groceries",
+            categorySource: "suggested",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(updateCaptureTransactionCategory).mockResolvedValue({
+      ok: true,
+      data: {
+        transactionId: 1,
+        finalCategory: "shopping",
+        categorySource: "user-override",
+        auditEntryId: 999,
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(/category for transaction 1/i), "shopping");
+    await user.click(screen.getByRole("button", { name: /update category/i }));
+
+    await waitFor(() => {
+      expect(updateCaptureTransactionCategory).toHaveBeenCalledWith({
+        transactionId: 1,
+        finalCategory: "shopping",
+      });
+    });
+  });
+
+  it("shows backend validation errors for invalid category update", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 10000,
+        },
+        entries: [
+          {
+            id: 101,
+            entryKind: "capture_transaction",
+            amountMinor: -5000,
+            createdAt: "2026-05-02 10:00:00",
+            captureTransactionId: 1,
+            finalCategory: "groceries",
+            categorySource: "suggested",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(updateCaptureTransactionCategory).mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Choose a valid category from the predefined taxonomy.",
+        hint: "Correct the highlighted field and try again.",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /update category/i }));
+
+    await waitFor(() => {
+      expect(updateCaptureTransactionCategory).toHaveBeenCalledWith({
+        transactionId: 1,
+        finalCategory: "groceries",
+      });
+    });
+  });
+
+  it("shows backend validation errors for missing transaction category update", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 10000,
+        },
+        entries: [
+          {
+            id: 101,
+            entryKind: "capture_transaction",
+            amountMinor: -5000,
+            createdAt: "2026-05-02 10:00:00",
+            captureTransactionId: 1,
+            finalCategory: "groceries",
+            categorySource: "suggested",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(updateCaptureTransactionCategory).mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Capture transaction not found for category update.",
+        hint: "Correct the highlighted field and try again.",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /update category/i }));
+
+    await waitFor(() => {
+      expect(updateCaptureTransactionCategory).toHaveBeenCalledWith({
+        transactionId: 1,
+        finalCategory: "groceries",
+      });
+    });
+  });
+
+  it("shows backend validation errors for non-persisted transaction category update", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 10000,
+        },
+        entries: [
+          {
+            id: 101,
+            entryKind: "capture_transaction",
+            amountMinor: -5000,
+            createdAt: "2026-05-02 10:00:00",
+            captureTransactionId: 1,
+            finalCategory: "groceries",
+            categorySource: "suggested",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(updateCaptureTransactionCategory).mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Category can only be updated for persisted transactions.",
+        hint: "Correct the highlighted field and try again.",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /update category/i }));
+
+    await waitFor(() => {
+      expect(updateCaptureTransactionCategory).toHaveBeenCalledWith({
+        transactionId: 1,
+        finalCategory: "groceries",
+      });
+    });
   });
 });
 

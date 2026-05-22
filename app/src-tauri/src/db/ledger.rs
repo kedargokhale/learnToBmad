@@ -25,6 +25,11 @@ pub fn migrations() -> Vec<Migration> {
         description: "expand_capture_audit_history",
         sql: include_str!("../../migrations/0004_expand_capture_audit_history.sql"),
         kind: MigrationKind::Up,
+    }, Migration {
+        version: 5,
+        description: "add_transaction_categories",
+        sql: include_str!("../../migrations/0005_add_transaction_categories.sql"),
+        kind: MigrationKind::Up,
     }]
 }
 

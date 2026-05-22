@@ -31,6 +31,10 @@ input {
   font: inherit;
 }
 
+select {
+  font: inherit;
+}
+
 #root {
   min-height: 100vh;
 }
@@ -188,6 +192,21 @@ input {
   background: rgba(255, 255, 255, 0.92);
   color: #14213d;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.field select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(20, 33, 61, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  color: #14213d;
+}
+
+.field select:focus {
+  border-color: #386ef5;
+  box-shadow: 0 0 0 4px rgba(56, 110, 245, 0.15);
+  outline: none;
 }
 
 .field input:focus {

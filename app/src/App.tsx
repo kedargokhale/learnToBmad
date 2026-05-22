@@ -22,11 +22,17 @@ import {
   saveGateDecisionDetailsSchema,
   type SaveLifecycleState,
   type BlockedFieldReason,
+  resolveCategorySource,
 } from "./features/capture/schema";
+import {
+  isCategoryCode,
+  type CategoryCode,
+} from "./features/categorization/schema";
 import { AccountSetupScreen } from "./features/ledger/components/AccountSetupScreen";
 import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineView";
 import {
   getLedgerBaseline,
+  updateCaptureTransactionCategory,
   type LedgerBaselineData,
 } from "./features/ledger/service";
 import "./App.css";
@@ -74,6 +80,7 @@ function App() {
   const [isAccountSetupPromptOpen, setIsAccountSetupPromptOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateDecision | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryCode>("other");
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
@@ -197,6 +204,8 @@ function App() {
         },
         parsedPayload: {
           ...correctedPreview,
+          finalCategory: selectedCategory,
+          categorySource: resolveCategorySource(correctedPreview.suggestedCategory, selectedCategory),
           readinessState: deriveReadinessStateFromBlockedFields(blockedFields),
         },
         mismatchResolution,
@@ -234,6 +243,7 @@ function App() {
     duplicateDecision,
     loadBaseline,
     mismatchResolution,
+    selectedCategory,
   ]);
 
   useEffect(() => {
@@ -263,6 +273,11 @@ function App() {
             setIsCorrectionOpen(false);
             setMismatchResolution(null);
             setDuplicateDecision(null);
+            if (preview && isCategoryCode(preview.finalCategory)) {
+              setSelectedCategory(preview.finalCategory);
+            } else {
+              setSelectedCategory("other");
+            }
             setCorrectionMap({});
           }}
           onAttemptSave={runSaveAttempt}
@@ -293,6 +308,12 @@ function App() {
             setSaveResult(null);
             setSaveLifecycleState("idle");
           }}
+          selectedCategory={selectedCategory}
+          onCategoryChange={(value) => {
+            setSelectedCategory(value);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+          }}
           preflightAccountMismatch={preflightAccountMismatch}
           saveLifecycleState={saveLifecycleState}
         />
@@ -320,7 +341,35 @@ function App() {
       </section>
 
       {baseline?.account ? (
-        <LedgerBaselineView baseline={baseline} onRefresh={loadBaseline} />
+        <LedgerBaselineView
+          baseline={baseline}
+          onRefresh={loadBaseline}
+          onUpdateCategory={async (transactionId, finalCategory) => {
+            try {
+              const result = await updateCaptureTransactionCategory({
+                transactionId,
+                finalCategory,
+              });
+
+              if (!result.ok) {
+                setSaveLifecycleState("failed");
+                setSaveError(result.error);
+                return;
+              }
+
+              setSaveResult(null);
+              setSaveLifecycleState("success");
+              await loadBaseline(true);
+            } catch {
+              setSaveLifecycleState("failed");
+              setSaveError({
+                code: "PERSISTENCE_ERROR",
+                message: "Category was updated, but the refreshed ledger baseline could not be loaded.",
+                hint: "Retry refresh. If the issue persists, restart the app and verify local database access.",
+              });
+            }
+          }}
+        />
       ) : (
         <section className="ledger-card" aria-live="polite">
           <h2>No transactions yet.</h2>
