@@ -22,6 +22,9 @@ pub struct ParsePreviewResponse {
     pub bank_name: Option<String>,
     pub account_number: Option<String>,
     pub merchant_or_payee: Option<String>,
+    pub suggested_category: String,
+    pub final_category: String,
+    pub category_source: String,
     pub readiness_state: &'static str,
 }
 
@@ -58,6 +61,10 @@ pub struct SaveTransactionParsedPayload {
     pub bank_name: Option<String>,
     pub account_number: Option<String>,
     pub merchant_or_payee: Option<String>,
+    #[allow(dead_code)]
+    pub suggested_category: Option<String>,
+    pub final_category: Option<String>,
+    pub category_source: Option<String>,
     pub readiness_state: Option<String>,
 }
 
@@ -126,6 +133,21 @@ const VALIDATION_REQUIRED_FIELDS: [&str; 6] = [
     "bankName",
     "accountNumber",
     "merchantOrPayee",
+];
+
+const CATEGORY_TAXONOMY: [&str; 12] = [
+    "groceries",
+    "dining",
+    "transport",
+    "shopping",
+    "utilities",
+    "entertainment",
+    "healthcare",
+    "education",
+    "salary",
+    "investment",
+    "transfer",
+    "other",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,6 +277,7 @@ async fn persist_transaction_save_with_pool_with_event(
     let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
     let transaction_fingerprint =
         build_transaction_fingerprint(payload, resolved_account_context);
+    let (suggested_category, final_category, category_source) = resolve_categories(payload);
 
     let capture_insert = sqlx::query(
         r#"
@@ -269,10 +292,13 @@ async fn persist_transaction_save_with_pool_with_event(
             bank_name,
             account_number,
             merchant_or_payee,
+            suggested_category,
+            final_category,
+            category_source,
             mismatch_resolution,
             duplicate_decision,
             save_state
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'persisted')
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'persisted')
         "#,
     )
     .bind(resolved_account_context.account_id)
@@ -285,6 +311,9 @@ async fn persist_transaction_save_with_pool_with_event(
     .bind(payload.parsed_payload.bank_name.as_deref().unwrap_or_default())
     .bind(payload.parsed_payload.account_number.as_deref().unwrap_or_default())
     .bind(payload.parsed_payload.merchant_or_payee.as_deref().unwrap_or_default())
+    .bind(&suggested_category)
+    .bind(&final_category)
+    .bind(&category_source)
     .bind(
         payload
             .mismatch_resolution
@@ -336,6 +365,9 @@ async fn persist_transaction_save_with_pool_with_event(
         "bankName": payload.parsed_payload.bank_name,
         "accountNumber": payload.parsed_payload.account_number,
         "merchantOrPayee": payload.parsed_payload.merchant_or_payee,
+        "suggestedCategory": suggested_category,
+        "finalCategory": final_category,
+        "categorySource": category_source,
         "mismatchResolution": payload.mismatch_resolution,
         "duplicateDecision": payload.duplicate_decision,
     });
@@ -625,6 +657,104 @@ fn normalize_compare_text(value: &str) -> String {
         .collect()
 }
 
+fn normalize_category(value: &str) -> Option<String> {
+    let lowered = value.trim().to_ascii_lowercase();
+    if CATEGORY_TAXONOMY.iter().any(|category| *category == lowered) {
+        Some(lowered)
+    } else {
+        None
+    }
+}
+
+fn suggest_category(
+    normalized_text: &str,
+    direction: Option<&str>,
+    merchant_or_payee: Option<&str>,
+) -> &'static str {
+    let mut corpus = normalized_text.to_ascii_lowercase();
+    if let Some(merchant) = merchant_or_payee {
+        corpus.push(' ');
+        corpus.push_str(&merchant.to_ascii_lowercase());
+    }
+
+    if direction == Some("credit") && corpus.contains("salary") {
+        return "salary";
+    }
+
+    if contains_any(&corpus, &["zomato", "swiggy", "restaurant", "cafe", "pizza", "dining"]) {
+        return "dining";
+    }
+
+    if contains_any(&corpus, &["uber", "ola", "metro", "fuel", "petrol", "diesel", "transport"]) {
+        return "transport";
+    }
+
+    if contains_any(&corpus, &["electricity", "water", "gas", "broadband", "recharge", "utility"]) {
+        return "utilities";
+    }
+
+    if contains_any(&corpus, &["hospital", "pharmacy", "clinic", "medical", "health"]) {
+        return "healthcare";
+    }
+
+    if contains_any(&corpus, &["school", "college", "course", "tuition", "education"]) {
+        return "education";
+    }
+
+    if contains_any(&corpus, &["mutual fund", "sip", "investment", "demat", "stocks"]) {
+        return "investment";
+    }
+
+    if contains_any(&corpus, &["grocery", "groceries", "supermarket", "bigbazaar", "dmart"]) {
+        return "groceries";
+    }
+
+    if contains_any(&corpus, &["amazon", "flipkart", "shopping", "mall", "purchase"]) {
+        return "shopping";
+    }
+
+    if contains_any(&corpus, &["netflix", "spotify", "movie", "bookmyshow", "entertainment"]) {
+        return "entertainment";
+    }
+
+    if contains_any(&corpus, &["upi", "transfer", "imps", "neft", "rtgs"]) {
+        return "transfer";
+    }
+
+    "other"
+}
+
+fn resolve_categories(payload: &SaveTransactionAttemptRequest) -> (String, String, String) {
+    let suggested_category = suggest_category(
+        &payload.parsed_payload.normalized_text,
+        payload.parsed_payload.direction.as_deref(),
+        payload.parsed_payload.merchant_or_payee.as_deref(),
+    )
+    .to_string();
+
+    let final_category = payload
+        .parsed_payload
+        .final_category
+        .as_deref()
+        .and_then(normalize_category)
+        .unwrap_or_else(|| suggested_category.clone());
+
+    let requested_source = payload
+        .parsed_payload
+        .category_source
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("suggested");
+
+    let category_source = if requested_source == "user-override" || final_category != suggested_category {
+        "user-override".to_string()
+    } else {
+        "suggested".to_string()
+    };
+
+    (suggested_category, final_category, category_source)
+}
+
 fn validate_required_text_field(
     value: Option<&str>,
     field: &'static str,
@@ -750,6 +880,11 @@ fn parse_preview(raw_text: &str) -> Option<ParsePreviewResponse> {
         .or_else(|| extract_account_number(&normalized));
     let merchant_or_payee = extract_merchant_or_payee_by_family(&normalized, _message_family)
         .or_else(|| extract_merchant_or_payee(&normalized));
+    let suggested_category = suggest_category(
+        &normalized,
+        direction.as_deref(),
+        merchant_or_payee.as_deref(),
+    );
 
     if amount_minor.is_none() || direction.is_none() {
         return None;
@@ -780,6 +915,9 @@ fn parse_preview(raw_text: &str) -> Option<ParsePreviewResponse> {
         bank_name,
         account_number,
         merchant_or_payee,
+        suggested_category: suggested_category.to_string(),
+        final_category: suggested_category.to_string(),
+        category_source: "suggested".to_string(),
         readiness_state,
     })
 }
@@ -1448,6 +1586,11 @@ mod tests {
             .await
             .expect("audit expansion migration to apply");
 
+        sqlx::raw_sql(include_str!("../../migrations/0005_add_transaction_categories.sql"))
+            .execute(&pool)
+            .await
+            .expect("category migration to apply");
+
         sqlx::query("INSERT INTO accounts (bank_name, account_number) VALUES ('HDFC Bank', 'XX1234')")
             .execute(&pool)
             .await
@@ -1520,6 +1663,9 @@ mod tests {
                     bank_name: None,
                     account_number: None,
                     merchant_or_payee: None,
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("needs-review".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1572,6 +1718,9 @@ mod tests {
                 bank_name: Some("unknown".to_string()),
                 account_number: Some("N/A".to_string()),
                 merchant_or_payee: Some("ambiguous".to_string()),
+                suggested_category: None,
+                final_category: None,
+                category_source: None,
                 readiness_state: Some("ready".to_string()),
             },
             mismatch_resolution: None,
@@ -1597,6 +1746,9 @@ mod tests {
                     bank_name: Some("unknown".to_string()),
                     account_number: Some("N/A".to_string()),
                     merchant_or_payee: Some("ambiguous".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1638,6 +1790,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1683,6 +1838,66 @@ mod tests {
             .entries
             .iter()
             .any(|entry| entry.entry_kind == "capture_transaction"));
+
+        let row = sqlx::query(
+            "SELECT suggested_category, final_category, category_source FROM capture_transactions ORDER BY id DESC LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("capture transaction row should exist");
+
+        assert_eq!(row.get::<String, _>("suggested_category"), "groceries");
+        assert_eq!(row.get::<String, _>("final_category"), "groceries");
+        assert_eq!(row.get::<String, _>("category_source"), "suggested");
+    }
+
+    #[tokio::test]
+    async fn persists_pre_save_category_override_with_user_override_source() {
+        let pool = setup_pool().await;
+
+        let result = attempt_transaction_save_with_pool(
+            &pool,
+            SaveTransactionAttemptRequest {
+                account_context: SaveAccountContext {
+                    account_id: 1,
+                    bank_name: "HDFC Bank".to_string(),
+                    account_number: "XX1234".to_string(),
+                },
+                parsed_payload: SaveTransactionParsedPayload {
+                    raw_text: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                        .to_string(),
+                    normalized_text:
+                        "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar."
+                            .to_string(),
+                    amount_minor: Some(125050),
+                    direction: Some("debit".to_string()),
+                    transaction_date: Some("2026-05-01".to_string()),
+                    bank_name: Some("HDFC Bank".to_string()),
+                    account_number: Some("XX1234".to_string()),
+                    merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: Some("groceries".to_string()),
+                    final_category: Some("shopping".to_string()),
+                    category_source: Some("user-override".to_string()),
+                    readiness_state: Some("ready".to_string()),
+                },
+                mismatch_resolution: None,
+                duplicate_decision: None,
+            },
+        )
+        .await;
+
+        assert!(result.ok);
+
+        let row = sqlx::query(
+            "SELECT suggested_category, final_category, category_source FROM capture_transactions ORDER BY id DESC LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("capture transaction row should exist");
+
+        assert_eq!(row.get::<String, _>("suggested_category"), "groceries");
+        assert_eq!(row.get::<String, _>("final_category"), "shopping");
+        assert_eq!(row.get::<String, _>("category_source"), "user-override");
     }
 
     #[tokio::test]
@@ -1709,6 +1924,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1737,6 +1955,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1791,6 +2012,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1843,6 +2067,9 @@ mod tests {
                     bank_name: Some("ICICI Bank".to_string()),
                     account_number: Some("XX9999".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: Some(AccountMismatchResolution::UseParsedAccount),
@@ -1887,6 +2114,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
@@ -1927,6 +2157,9 @@ mod tests {
                     bank_name: Some("ICICI Bank".to_string()),
                     account_number: Some("XX9999".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -1967,6 +2200,9 @@ mod tests {
                     bank_name: Some("HDFC Bank".to_string()),
                     account_number: Some("XX1234".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: None,
@@ -2007,6 +2243,9 @@ mod tests {
                     bank_name: Some("ICICI Bank".to_string()),
                     account_number: Some("XX9999".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
@@ -2034,6 +2273,9 @@ mod tests {
                     bank_name: Some("ICICI Bank".to_string()),
                     account_number: Some("XX9999".to_string()),
                     merchant_or_payee: Some("BigBazaar".to_string()),
+                    suggested_category: None,
+                    final_category: None,
+                    category_source: None,
                     readiness_state: Some("ready".to_string()),
                 },
                 mismatch_resolution: Some(AccountMismatchResolution::UseSelectedAccount),
@@ -2570,3 +2812,4 @@ fn missing_parsed_account_envelope(
         }),
     }
 }
+

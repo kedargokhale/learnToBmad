@@ -1,6 +1,6 @@
 # Story 3.1: Day-1 Category Taxonomy and Suggested Categorization
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -16,22 +16,34 @@ so that insights are useful from the first transactions.
 
 ## Tasks / Subtasks
 
-- [ ] Define Day-1 category taxonomy and persistence contract (AC: 1)
-  - [ ] Add a migration for taxonomy seed and transaction category fields (idempotent, ordered migration only).
-  - [ ] Add backend read/write model for category suggestion + explicit override source.
-- [ ] Generate suggestion during parse-save flow (AC: 1)
-  - [ ] Extend capture save path to include `suggestedCategory`, `finalCategory`, and `categorySource` metadata.
-  - [ ] Keep deterministic behavior for same input + same ruleset.
-- [ ] Support pre-save override in capture UI (AC: 2)
-  - [ ] Add category selector to capture flow once parse preview exists.
-  - [ ] Preserve hard validation gates for critical fields (category must not bypass required-field checks).
-- [ ] Support post-save override in ledger/dashboard surface (AC: 3)
-  - [ ] Add category edit action for persisted rows.
-  - [ ] Persist edit history in audit trail with non-destructive updates.
-- [ ] Add regression and acceptance tests (AC: 1, 2, 3)
-  - [ ] Rust tests for deterministic category assignment and override persistence.
-  - [ ] Frontend tests for pre-save override and post-save edit behavior.
-  - [ ] Ensure Story 2.1-2.5 tests remain green.
+- [x] Define Day-1 category taxonomy and persistence contract (AC: 1)
+  - [x] Add a migration for taxonomy seed and transaction category fields (idempotent, ordered migration only).
+  - [x] Add backend read/write model for category suggestion + explicit override source.
+- [x] Generate suggestion during parse-save flow (AC: 1)
+  - [x] Extend capture save path to include `suggestedCategory`, `finalCategory`, and `categorySource` metadata.
+  - [x] Keep deterministic behavior for same input + same ruleset.
+- [x] Support pre-save override in capture UI (AC: 2)
+  - [x] Add category selector to capture flow once parse preview exists.
+  - [x] Preserve hard validation gates for critical fields (category must not bypass required-field checks).
+- [x] Support post-save override in ledger/dashboard surface (AC: 3)
+  - [x] Add category edit action for persisted rows.
+  - [x] Persist edit history in audit trail with non-destructive updates.
+- [x] Add regression and acceptance tests (AC: 1, 2, 3)
+  - [x] Rust tests for deterministic category assignment and override persistence.
+  - [x] Frontend tests for pre-save override and post-save edit behavior.
+  - [x] Ensure Story 2.1-2.5 tests remain green.
+
+### Review Findings
+
+- [x] [Review][Patch] Persisted suggested category can be client-influenced, breaking deterministic save behavior [app/src-tauri/src/commands/capture.rs:726]
+- [x] [Review][Patch] Post-save category update ignores persisted save-state guard and can mutate non-persisted rows [app/src-tauri/src/commands/ledger.rs:271]
+- [x] [Review][Patch] Post-save category update always forces category_source to user-override [app/src-tauri/src/commands/ledger.rs:271]
+- [x] [Review][Patch] Migration v0005 can fail mid-flight and leave foreign key enforcement unsafe (merged blind+edge finding) [app/src-tauri/migrations/0005_add_transaction_categories.sql:1]
+- [x] [Review][Patch] Zero-amount transactions render as missing amount in readiness UI [app/src/features/capture/components/ReadinessStatus.tsx:125]
+- [x] [Review][Patch] Ledger category update can issue duplicate writes and unhandled async refresh failures [app/src/features/ledger/components/LedgerBaselineView.tsx:110]
+- [x] [Review][Patch] No-op category updates still write and append audit events [app/src-tauri/src/commands/ledger.rs:357]
+- [x] [Review][Patch] Unknown/new category codes can hard-fail strict frontend schema validation [app/src/features/capture/schema.ts:81]
+- [x] [Review][Patch] Missing negative-path tests for invalid category, missing transaction, and non-persisted-state rejection [app/src/features/ledger/ledger.test.tsx:296]
 
 ## Dev Notes
 
@@ -175,8 +187,8 @@ Implication for this story: preserve save-triggered flow consistency and avoid r
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Story implementation complete with migration-backed taxonomy seed, deterministic suggestion, pre-save override, and post-save edit with audit history.
 
 ## Dev Agent Record
 
@@ -187,15 +199,44 @@ GPT-5.3-Codex
 ### Debug Log References
 
 - Workflow configuration resolved via `_bmad/scripts/resolve_customization.py`.
-- Planning artifacts and implementation context fully analyzed.
-- Story context generated with architecture, UX, git, and latest-tech guardrails.
+- Sprint status updated to in-progress before implementation and to review after completion.
+- Implemented migration v5 for taxonomy seed, capture category fields, and category audit event expansion.
+- Added backend deterministic suggestion/override handling and category update command path.
+- Added frontend pre-save category selector and ledger post-save category edit controls.
+- Executed full verification:
+  - `npm test` (28 passing)
+  - `cargo test` (35 passing)
+  - `npm run build` (tsc + vite build successful)
 
 ### Completion Notes List
 
-- Story context includes concrete update-file guardrails to avoid regressions.
-- Deterministic behavior, atomicity, and UX constraints captured as non-negotiables.
-- Cross-epic intelligence from Story 2.5 review fixes incorporated.
+- Added migration `0005_add_transaction_categories.sql` with seeded Day-1 taxonomy and capture category persistence fields.
+- Extended parse/save envelopes to carry `suggestedCategory`, `finalCategory`, and `categorySource` while preserving deterministic save-state behavior.
+- Implemented deterministic category suggestion rules in Rust with same-input same-ruleset stability.
+- Added pre-save override control in capture readiness UI without bypassing existing critical-field validation gates.
+- Added post-save category override action in ledger history and persisted non-destructive `category_updated` audit events.
+- Added/updated Rust and frontend tests for deterministic assignment, pre-save override payloads, post-save edits, and regression safety.
 
 ### File List
 
+- app/src-tauri/migrations/0005_add_transaction_categories.sql
+- app/src-tauri/src/db/ledger.rs
+- app/src-tauri/src/commands/capture.rs
+- app/src-tauri/src/commands/ledger.rs
+- app/src-tauri/src/lib.rs
+- app/src/features/categorization/schema.ts
+- app/src/features/capture/schema.ts
+- app/src/features/capture/service.ts
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/capture.test.tsx
+- app/src/features/ledger/service.ts
+- app/src/features/ledger/components/LedgerBaselineView.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/App.tsx
+- app/src/App.css
+- _bmad-output/implementation-artifacts/sprint-status.yaml
 - _bmad-output/implementation-artifacts/3-1-day-1-category-taxonomy-and-suggested-categorization.md
+
+## Change Log
+
+- 2026-05-22: Implemented Story 3.1 end-to-end and validated AC1-AC3. Added ordered migration v5 for taxonomy/category persistence, deterministic category suggestion/override handling in capture save flow, pre-save override UI, post-save ledger override with audit append, and full automated test coverage updates.

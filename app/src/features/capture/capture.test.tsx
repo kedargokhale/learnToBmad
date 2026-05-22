@@ -17,7 +17,9 @@ import {
   saveGateDecisionDetailsSchema,
   type SaveLifecycleState,
   type BlockedFieldReason,
+  resolveCategorySource,
 } from "./schema";
+import { type CategoryCode, isCategoryCode } from "../categorization/schema";
 import type {
   SaveTransactionAttemptPayload,
   CommandError,
@@ -53,6 +55,7 @@ function CaptureHarness({
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [mismatchResolution, setMismatchResolution] = useState<"use-selected-account" | "use-parsed-account" | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<"save-as-new" | "skip-save" | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryCode>("other");
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
@@ -94,6 +97,11 @@ function CaptureHarness({
           setIsCorrectionOpen(false);
           setMismatchResolution(null);
           setDuplicateDecision(null);
+          if (nextPreview && isCategoryCode(nextPreview.finalCategory)) {
+            setSelectedCategory(nextPreview.finalCategory);
+          } else {
+            setSelectedCategory("other");
+          }
           setCorrectionMap({});
         }}
         saveBlockedReasons={blockedReasons}
@@ -117,6 +125,11 @@ function CaptureHarness({
             },
             parsedPayload: {
               ...correctedPreview,
+              finalCategory: selectedCategory,
+              categorySource: resolveCategorySource(
+                correctedPreview.suggestedCategory,
+                selectedCategory,
+              ),
               readinessState: deriveReadinessStateFromBlockedFields(blockedFields),
             },
             mismatchResolution,
@@ -155,6 +168,11 @@ function CaptureHarness({
         }}
         onDuplicateDecisionChange={(value) => {
           setDuplicateDecision(value);
+          setSaveLifecycleState("idle");
+        }}
+        selectedCategory={selectedCategory}
+        onCategoryChange={(value) => {
+          setSelectedCategory(value);
           setSaveLifecycleState("idle");
         }}
         saveLifecycleState={saveLifecycleState}
@@ -201,6 +219,9 @@ describe("Capture parse UX", () => {
           bankName: "HDFC Bank",
           accountNumber: "XX1234",
           merchantOrPayee: "BigBazaar",
+          suggestedCategory: "other",
+          finalCategory: "other",
+          categorySource: "suggested",
           readinessState: "ready",
         },
       })
@@ -215,6 +236,9 @@ describe("Capture parse UX", () => {
           bankName: "HDFC Bank",
           accountNumber: "XX9410",
           merchantOrPayee: null,
+          suggestedCategory: "other",
+          finalCategory: "other",
+          categorySource: "suggested",
           readinessState: "needs-review",
         },
       });
@@ -232,6 +256,64 @@ describe("Capture parse UX", () => {
     expect(parseMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts unknown category codes in parse preview without schema-failure state", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 300 on 2026-05-01 at Vendor X.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 300 on 2026-05-01 at Vendor X.",
+        amountMinor: 30000,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "Vendor X",
+        suggestedCategory: "travel-international",
+        finalCategory: "travel-international",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 300 on 2026-05-01 at Vendor X.");
+
+    expect(await screen.findByText(/state: ready for validation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/parse data validation failed/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/suggested: travel-international/i)).toBeInTheDocument();
+  });
+
+  it("renders zero amount as present instead of missing", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 0.00 on 2026-05-01 at Vendor X.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 0.00 on 2026-05-01 at Vendor X.",
+        amountMinor: 0,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "Vendor X",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 0.00 on 2026-05-01 at Vendor X.");
+
+    expect(await screen.findByText("₹0.00")).toBeInTheDocument();
+  });
+
   it("shows parse-ready feedback for a supported message", async () => {
     const user = userEvent.setup();
     const parseMessage = vi.fn().mockResolvedValue({
@@ -245,6 +327,9 @@ describe("Capture parse UX", () => {
         bankName: "HDFC Bank",
         accountNumber: "XX1234",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -296,6 +381,9 @@ describe("Capture parse UX", () => {
         bankName: "ICICI Bank",
         accountNumber: "9988",
         merchantOrPayee: "ACME PAYROLL",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -337,6 +425,9 @@ describe("Capture parse UX", () => {
         bankName: null,
         accountNumber: null,
         merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "needs-review",
       },
     });
@@ -400,6 +491,9 @@ describe("Capture parse UX", () => {
         bankName: null,
         accountNumber: null,
         merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "needs-review",
       },
     });
@@ -429,6 +523,9 @@ describe("Capture parse UX", () => {
         bankName: null,
         accountNumber: null,
         merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "needs-review",
       },
     });
@@ -460,6 +557,9 @@ describe("Capture parse UX", () => {
         bankName: null,
         accountNumber: null,
         merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "needs-review",
       },
     });
@@ -500,6 +600,9 @@ describe("Capture parse UX", () => {
         bankName: null,
         accountNumber: null,
         merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "needs-review",
       },
     });
@@ -559,6 +662,9 @@ describe("Capture parse UX", () => {
         bankName: "HDFC Bank",
         accountNumber: "XX1234",
         merchantOrPayee: "BIGBAZAAR",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -609,6 +715,9 @@ describe("Capture parse UX", () => {
         bankName: "ICICI Bank",
         accountNumber: "XX9999",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -688,6 +797,9 @@ describe("Capture parse UX", () => {
         bankName: "HDFC Bank",
         accountNumber: "XX1234",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -762,6 +874,9 @@ describe("Capture parse UX", () => {
         bankName: "ICICI Bank",
         accountNumber: "XX9999",
         merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
         readinessState: "ready",
       },
     });
@@ -821,4 +936,64 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/continue as a new transaction candidate/i));
     expect(saveButton).toBeEnabled();
   });
+
+  it("sends user-selected category override in save payload", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        suggestedCategory: "groceries",
+        finalCategory: "groceries",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    const saveAttempt = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        validationState: "passed",
+        acceptedForWrite: true,
+        checkedFields: [
+          "amountMinor",
+          "direction",
+          "transactionDate",
+          "bankName",
+          "accountNumber",
+          "merchantOrPayee",
+        ],
+        message: "Validation passed and the transaction was persisted deterministically.",
+        persistedRecord: createPersistedRecord(),
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+
+    await user.selectOptions(screen.getByLabelText(/category before save/i), "shopping");
+
+    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(saveAttempt).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = saveAttempt.mock.calls[0][0] as SaveTransactionAttemptPayload;
+    expect(payload.parsedPayload.suggestedCategory).toBe("groceries");
+    expect(payload.parsedPayload.finalCategory).toBe("shopping");
+    expect(payload.parsedPayload.categorySource).toBe("user-override");
+  });
 });
+
+

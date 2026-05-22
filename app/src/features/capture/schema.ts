@@ -72,16 +72,27 @@ export const parsePreviewSchema = z.object({
   bankName: z.string().nullable(),
   accountNumber: z.string().nullable(),
   merchantOrPayee: z.string().nullable(),
+  suggestedCategory: z.string().min(1),
+  finalCategory: z.string().min(1),
+  categorySource: z.enum(["suggested", "user-override"]),
   readinessState: parseReadinessStateSchema,
 });
 
 export type ParsePreviewViewModel = z.infer<typeof parsePreviewSchema>;
+export type CategorySource = "suggested" | "user-override";
 export type BlockedFieldReason = z.infer<typeof blockedFieldReasonSchema>;
 export type CorrectionMap = z.infer<typeof correctionMapSchema>;
 export type AccountMismatchResolution = z.infer<typeof accountMismatchResolutionSchema>;
 export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;
 export type SaveLifecycleState = z.infer<typeof saveLifecycleStateSchema>;
 export type SaveGateDecisionDetails = z.infer<typeof saveGateDecisionDetailsSchema>;
+
+export function resolveCategorySource(
+  suggestedCategory: string,
+  finalCategory: string,
+): CategorySource {
+  return suggestedCategory === finalCategory ? "suggested" : "user-override";
+}
 
 export function formatCurrency(amountMinor: number | null): string {
   if (amountMinor === null) return "-";

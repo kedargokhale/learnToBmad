@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ledger::create_account,
             commands::ledger::get_ledger_baseline,
+            commands::ledger::update_capture_transaction_category,
             commands::capture::parse_transaction_message,
             commands::capture::attempt_transaction_save
         ])

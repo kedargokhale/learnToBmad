@@ -30,6 +30,12 @@ pub struct LedgerEntrySummary {
     pub entry_kind: String,
     pub amount_minor: i64,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_transaction_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_source: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +53,22 @@ pub struct LedgerBaselineResponse {
     pub account: Option<LedgerAccountSummary>,
     pub entries: Vec<LedgerEntrySummary>,
     pub ordering: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCaptureCategoryRequest {
+    pub transaction_id: i64,
+    pub final_category: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCaptureCategoryResponse {
+    pub transaction_id: i64,
+    pub final_category: String,
+    pub category_source: String,
+    pub audit_entry_id: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -249,9 +271,161 @@ fn is_unique_violation(error: &sqlx::Error) -> bool {
     }
 }
 
+const CATEGORY_TAXONOMY: [&str; 12] = [
+    "groceries",
+    "dining",
+    "transport",
+    "shopping",
+    "utilities",
+    "entertainment",
+    "healthcare",
+    "education",
+    "salary",
+    "investment",
+    "transfer",
+    "other",
+];
+
+fn normalize_category(value: &str) -> Option<String> {
+    let lowered = value.trim().to_ascii_lowercase();
+    if CATEGORY_TAXONOMY.iter().any(|category| *category == lowered) {
+        Some(lowered)
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub async fn update_capture_transaction_category(
+    app: AppHandle,
+    payload: UpdateCaptureCategoryRequest,
+) -> CommandEnvelope<UpdateCaptureCategoryResponse> {
+    match ledger::sqlite_pool(&app).await {
+        Ok(pool) => match update_capture_transaction_category_with_pool(&pool, payload).await {
+            Ok(data) => CommandEnvelope {
+                ok: true,
+                data: Some(data),
+                error: None,
+            },
+            Err(error) => error.into_envelope(),
+        },
+        Err(error) => CommandError::persistence(error).into_envelope(),
+    }
+}
+
+async fn update_capture_transaction_category_with_pool(
+    pool: &Pool<Sqlite>,
+    payload: UpdateCaptureCategoryRequest,
+) -> Result<UpdateCaptureCategoryResponse, CommandError> {
+    if payload.transaction_id <= 0 {
+        return Err(CommandError::validation(
+            "Transaction id is required before updating category.",
+            "transactionId",
+        ));
+    }
+
+    let next_category = normalize_category(&payload.final_category).ok_or_else(|| {
+        CommandError::validation(
+            "Choose a valid category from the predefined taxonomy.",
+            "finalCategory",
+        )
+    })?;
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let existing_row = sqlx::query(
+        "SELECT id, suggested_category, final_category, category_source, save_state FROM capture_transactions WHERE id = $1",
+    )
+    .bind(payload.transaction_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let Some(existing_row) = existing_row else {
+        return Err(CommandError::validation(
+            "Capture transaction not found for category update.",
+            "transactionId",
+        ));
+    };
+
+    let save_state = existing_row.get::<String, _>("save_state");
+    if save_state != "persisted" {
+        return Err(CommandError::validation(
+            "Category can only be updated for persisted transactions.",
+            "transactionId",
+        ));
+    }
+
+    let suggested_category = existing_row.get::<String, _>("suggested_category");
+    let previous_category = existing_row.get::<String, _>("final_category");
+    let previous_source = existing_row.get::<String, _>("category_source");
+
+    if previous_category == next_category {
+        return Ok(UpdateCaptureCategoryResponse {
+            transaction_id: payload.transaction_id,
+            final_category: next_category,
+            category_source: previous_source,
+            audit_entry_id: 0,
+        });
+    }
+
+    let next_source = if next_category == suggested_category {
+        "suggested".to_string()
+    } else {
+        "user-override".to_string()
+    };
+
+    sqlx::query(
+        "UPDATE capture_transactions SET final_category = $1, category_source = $2 WHERE id = $3 AND save_state = 'persisted'",
+    )
+    .bind(&next_category)
+    .bind(&next_source)
+    .bind(payload.transaction_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let audit_payload = json!({
+        "transactionId": payload.transaction_id,
+        "previousFinalCategory": previous_category,
+        "nextFinalCategory": next_category,
+        "categorySource": next_source
+    });
+
+    let audit_insert = sqlx::query(
+        "INSERT INTO capture_audit_trail (capture_transaction_id, event_kind, payload_json) VALUES ($1, 'category_updated', $2)",
+    )
+    .bind(payload.transaction_id)
+    .bind(audit_payload.to_string())
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    Ok(UpdateCaptureCategoryResponse {
+        transaction_id: payload.transaction_id,
+        final_category: next_category,
+        category_source: next_source,
+        audit_entry_id: audit_insert.last_insert_rowid(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{create_account_with_pool, get_ledger_baseline_with_pool, CreateAccountRequest};
+    use super::{
+        create_account_with_pool,
+        get_ledger_baseline_with_pool,
+        update_capture_transaction_category_with_pool,
+        CreateAccountRequest,
+        UpdateCaptureCategoryRequest,
+    };
     use sqlx::{sqlite::SqlitePoolOptions, Row};
 
     async fn setup_pool() -> sqlx::Pool<sqlx::Sqlite> {
@@ -280,6 +454,11 @@ mod tests {
             .execute(&pool)
             .await
             .expect("audit expansion migration to apply");
+
+        sqlx::raw_sql(include_str!("../../migrations/0005_add_transaction_categories.sql"))
+            .execute(&pool)
+            .await
+            .expect("category migration to apply");
 
         pool
     }
@@ -443,6 +622,143 @@ mod tests {
         assert_eq!(tied_entries.len(), 2);
         assert!(tied_entries[0].id > tied_entries[1].id);
     }
+
+    #[tokio::test]
+    async fn updates_capture_transaction_category_and_appends_audit_entry() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+                opening_balance_minor: 10000,
+            },
+        )
+        .await
+        .expect("account should be created for capture transaction");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state) VALUES ($1, 'fp-1', 'raw', 'raw', 5000, 'debit', '2026-05-01', 'HDFC Bank', 'XX1234', 'BigBazaar', 'groceries', 'groceries', 'suggested', 'none', 'none', 'persisted')",
+        )
+        .bind(account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transaction insert should succeed");
+
+        let update_result = update_capture_transaction_category_with_pool(
+            &pool,
+            UpdateCaptureCategoryRequest {
+                transaction_id: 1,
+                final_category: "shopping".to_string(),
+            },
+        )
+        .await
+        .expect("category update should succeed");
+
+        assert_eq!(update_result.transaction_id, 1);
+        assert_eq!(update_result.final_category, "shopping");
+        assert_eq!(update_result.category_source, "user-override");
+
+        let row = sqlx::query(
+            "SELECT final_category, category_source FROM capture_transactions WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("capture transaction should exist");
+
+        assert_eq!(row.get::<String, _>("final_category"), "shopping");
+        assert_eq!(row.get::<String, _>("category_source"), "user-override");
+
+        let audit_count = sqlx::query(
+            "SELECT COUNT(*) AS count FROM capture_audit_trail WHERE capture_transaction_id = 1 AND event_kind = 'category_updated'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("audit count query should succeed")
+        .get::<i64, _>("count");
+
+        assert_eq!(audit_count, 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_category_update_request() {
+        let pool = setup_pool().await;
+
+        let result = update_capture_transaction_category_with_pool(
+            &pool,
+            UpdateCaptureCategoryRequest {
+                transaction_id: 1,
+                final_category: "not-a-category".to_string(),
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_category_update_for_missing_transaction() {
+        let pool = setup_pool().await;
+
+        let result = update_capture_transaction_category_with_pool(
+            &pool,
+            UpdateCaptureCategoryRequest {
+                transaction_id: 999,
+                final_category: "shopping".to_string(),
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn no_op_category_update_does_not_append_audit_entry() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+                opening_balance_minor: 10000,
+            },
+        )
+        .await
+        .expect("account should be created for capture transaction");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state) VALUES ($1, 'fp-1', 'raw', 'raw', 5000, 'debit', '2026-05-01', 'HDFC Bank', 'XX1234', 'BigBazaar', 'groceries', 'groceries', 'suggested', 'none', 'none', 'persisted')",
+        )
+        .bind(account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transaction insert should succeed");
+
+        let result = update_capture_transaction_category_with_pool(
+            &pool,
+            UpdateCaptureCategoryRequest {
+                transaction_id: 1,
+                final_category: "groceries".to_string(),
+            },
+        )
+        .await
+        .expect("no-op update should succeed");
+
+        assert_eq!(result.audit_entry_id, 0);
+        assert_eq!(result.category_source, "suggested");
+
+        let audit_count = sqlx::query(
+            "SELECT COUNT(*) AS count FROM capture_audit_trail WHERE capture_transaction_id = 1 AND event_kind = 'category_updated'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("audit count query should succeed")
+        .get::<i64, _>("count");
+
+        assert_eq!(audit_count, 0);
+    }
 }
 
 #[tauri::command]
@@ -492,7 +808,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
     .get::<i64, _>("current_balance_minor");
 
     let entry_rows = sqlx::query(
-        "SELECT id, entry_kind, amount_minor, created_at FROM (SELECT id, entry_kind, amount_minor, created_at FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor, created_at FROM capture_transactions WHERE account_id = $1) ORDER BY created_at DESC, id DESC",
+        "SELECT id, entry_kind, amount_minor, created_at, capture_transaction_id, final_category, category_source FROM (SELECT id, entry_kind, amount_minor, created_at, NULL AS capture_transaction_id, NULL AS final_category, NULL AS category_source FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor, created_at, id AS capture_transaction_id, final_category, category_source FROM capture_transactions WHERE account_id = $1) ORDER BY created_at DESC, id DESC",
     )
     .bind(account_id)
     .fetch_all(pool)
@@ -506,6 +822,9 @@ pub(crate) async fn get_ledger_baseline_with_pool(
             entry_kind: row.get::<String, _>("entry_kind"),
             amount_minor: row.get::<i64, _>("amount_minor"),
             created_at: row.get::<String, _>("created_at"),
+            capture_transaction_id: row.get::<Option<i64>, _>("capture_transaction_id"),
+            final_category: row.get::<Option<String>, _>("final_category"),
+            category_source: row.get::<Option<String>, _>("category_source"),
         })
         .collect();
 

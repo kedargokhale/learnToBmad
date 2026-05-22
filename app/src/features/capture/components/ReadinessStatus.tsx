@@ -11,7 +11,13 @@ import {
   saveGateDecisionDetailsSchema,
   type SaveLifecycleState,
   type ParsePreviewViewModel,
+  type CategorySource,
 } from "../schema";
+import {
+  CATEGORY_TAXONOMY,
+  categoryLabel,
+  type CategoryCode,
+} from "../../categorization/schema";
 import { AccountMismatchResolver } from "./AccountMismatchResolver";
 import { DuplicateFlagIndicator } from "./DuplicateFlagIndicator";
 import type {
@@ -33,6 +39,8 @@ type ReadinessStatusProps = {
   onMismatchResolutionChange: (value: AccountMismatchResolution) => void;
   onDuplicateDecisionChange: (value: DuplicateDecision) => void;
   saveLifecycleState: SaveLifecycleState;
+  selectedCategory: CategoryCode;
+  onCategoryChange: (value: CategoryCode) => void;
   preflightAccountMismatch?: {
     detected: boolean;
     requiresResolution: boolean;
@@ -56,6 +64,8 @@ export function ReadinessStatus({
   onMismatchResolutionChange,
   onDuplicateDecisionChange,
   saveLifecycleState,
+  selectedCategory,
+  onCategoryChange,
   preflightAccountMismatch,
 }: ReadinessStatusProps) {
   const parsedPreview = preview ? parsePreviewSchema.safeParse(preview) : null;
@@ -112,13 +122,16 @@ export function ReadinessStatus({
   }
 
   const fields: Array<[string, string | number | null]> = [
-    ["Amount", viewModel.amountMinor ? formatCurrency(viewModel.amountMinor) : null],
+    ["Amount", viewModel.amountMinor === null ? null : formatCurrency(viewModel.amountMinor)],
     ["Direction", viewModel.direction],
     ["Date", viewModel.transactionDate],
     ["Bank", viewModel.bankName],
     ["Account", viewModel.accountNumber],
     ["Merchant/Payee", viewModel.merchantOrPayee],
+    ["Suggested category", categoryLabel(viewModel.suggestedCategory)],
   ];
+  const selectedCategorySource: CategorySource =
+    selectedCategory === viewModel.suggestedCategory ? "suggested" : "user-override";
 
   return (
     <section className="ledger-card capture-card" aria-live="polite">
@@ -157,6 +170,24 @@ export function ReadinessStatus({
           </li>
         ))}
       </ul>
+
+      <div className="field">
+        <label htmlFor="categoryOverride">Category before save</label>
+        <select
+          id="categoryOverride"
+          value={selectedCategory}
+          onChange={(event) => onCategoryChange(event.target.value as CategoryCode)}
+        >
+          {CATEGORY_TAXONOMY.map((category) => (
+            <option key={category.code} value={category.code}>
+              {category.label}
+            </option>
+          ))}
+        </select>
+        <div className="hint">
+          Suggested: {categoryLabel(viewModel.suggestedCategory)}. Final for save: {categoryLabel(selectedCategory)} ({selectedCategorySource}).
+        </div>
+      </div>
 
       {viewModel.readinessState !== "ready" ? (
         <div className="blocked-reasons">

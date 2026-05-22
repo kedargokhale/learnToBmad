@@ -20,6 +20,9 @@ export type ParsePreviewData = {
   bankName: string | null;
   accountNumber: string | null;
   merchantOrPayee: string | null;
+  suggestedCategory: string;
+  finalCategory: string;
+  categorySource: "suggested" | "user-override";
   readinessState: "ready" | "needs-review";
 };
 

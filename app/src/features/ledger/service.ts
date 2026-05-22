@@ -19,6 +19,9 @@ export type LedgerEntryData = {
   entryKind: string;
   amountMinor: number;
   createdAt: string;
+  captureTransactionId?: number;
+  finalCategory?: string;
+  categorySource?: "suggested" | "user-override";
 };
 
 export type LedgerAccountData = {
@@ -63,4 +66,18 @@ export async function createLedgerAccount(
 
 export async function getLedgerBaseline(): Promise<CommandEnvelope<LedgerBaselineData>> {
   return invoke<CommandEnvelope<LedgerBaselineData>>("get_ledger_baseline");
+}
+
+export async function updateCaptureTransactionCategory(payload: {
+  transactionId: number;
+  finalCategory: string;
+}): Promise<CommandEnvelope<{
+  transactionId: number;
+  finalCategory: string;
+  categorySource: "suggested" | "user-override";
+  auditEntryId: number;
+}>> {
+  return invoke("update_capture_transaction_category", {
+    payload,
+  });
 }
