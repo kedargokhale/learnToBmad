@@ -223,6 +223,95 @@ describe("Ledger baseline app flow", () => {
     expect(screen.getByText(/bigbazaar/i)).toBeInTheDocument();
   });
 
+  it("renders trend alert metadata and running-balance points from baseline payload", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        categoryInsights: [],
+        merchantInsights: [],
+        trendAlert: {
+          windowPreset: "30d",
+          currentSpendMinor: 9000,
+          baselineSpendMinor: 6000,
+          deltaPercent: 50,
+          thresholdPercent: 20,
+          isAlert: true,
+          reason: "Current window spend is 50.0% above baseline.",
+        },
+        runningBalance: {
+          windowPreset: "30d",
+          points: [
+            {
+              timestamp: "2026-05-01 10:00:00",
+              balanceMinor: 10000,
+              deltaMinor: 10000,
+              entryId: 1,
+              entryKind: "opening_balance",
+            },
+            {
+              timestamp: "2026-05-02 10:00:00",
+              balanceMinor: 9000,
+              deltaMinor: -1000,
+              entryId: 2,
+              entryKind: "capture_transaction",
+            },
+          ],
+        },
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /trend signal/i })).toBeInTheDocument();
+    expect(screen.getByText(/current window spend is 50.0% above baseline/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /running balance/i })).toBeInTheDocument();
+    expect(screen.getByText(/opening balance/i)).toBeInTheDocument();
+  });
+
+  it("shows deterministic empty states for trend and running-balance regions", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        categoryInsights: [],
+        merchantInsights: [],
+        trendAlert: {
+          windowPreset: "30d",
+          currentSpendMinor: 0,
+          baselineSpendMinor: 0,
+          deltaPercent: 0,
+          thresholdPercent: 20,
+          isAlert: false,
+          reason: "Not enough persisted debit history to compare trend windows.",
+        },
+        runningBalance: {
+          windowPreset: "30d",
+          points: [],
+        },
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/not enough persisted debit history to compare trend windows/i)).toBeInTheDocument();
+    expect(screen.getByText(/no running-balance points available for this preset window yet/i)).toBeInTheDocument();
+  });
+
   it("shows deterministic empty states when no persisted insight rows are available", async () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,

@@ -214,6 +214,34 @@ select {
   color: #20437c;
 }
 
+.trend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 33, 61, 0.15);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.trend-pill--alert {
+  background: #fff0e8;
+  color: #9a3412;
+}
+
+.trend-pill--stable {
+  background: #ebf7ef;
+  color: #1b6b37;
+}
+
+.running-balance-card .story-card-list {
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .ledger-card h2 {
   margin: 0 0 8px;
   font-size: 1.45rem;

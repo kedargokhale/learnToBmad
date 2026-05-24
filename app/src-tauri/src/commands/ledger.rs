@@ -54,7 +54,38 @@ pub struct LedgerBaselineResponse {
     pub entries: Vec<LedgerEntrySummary>,
     pub category_insights: Vec<CategoryInsightSummary>,
     pub merchant_insights: Vec<MerchantInsightSummary>,
+    pub trend_alert: TrendAlertSummary,
+    pub running_balance: RunningBalanceSummary,
     pub ordering: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrendAlertSummary {
+    pub window_preset: &'static str,
+    pub current_spend_minor: i64,
+    pub baseline_spend_minor: i64,
+    pub delta_percent: f64,
+    pub threshold_percent: f64,
+    pub is_alert: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningBalanceSummary {
+    pub window_preset: &'static str,
+    pub points: Vec<RunningBalancePoint>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningBalancePoint {
+    pub timestamp: String,
+    pub balance_minor: i64,
+    pub delta_minor: i64,
+    pub entry_id: i64,
+    pub entry_kind: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -581,7 +612,94 @@ mod tests {
         assert!(baseline.entries.is_empty());
         assert!(baseline.category_insights.is_empty());
         assert!(baseline.merchant_insights.is_empty());
+        assert_eq!(baseline.trend_alert.window_preset, "30d");
+        assert!(!baseline.trend_alert.is_alert);
+        assert!(baseline.running_balance.points.is_empty());
         assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn computes_trend_alert_against_previous_window_baseline() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+                opening_balance_minor: 100000,
+            },
+        )
+        .await
+        .expect("account should be created");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state, created_at) VALUES ($1, 'p-1', 'raw', 'raw', 1000, 'debit', '2026-02-20', 'HDFC Bank', 'XX1234', 'Cafe', 'dining', 'dining', 'suggested', 'none', 'none', 'persisted', '2026-02-20 09:00:00'), ($1, 'p-2', 'raw', 'raw', 1000, 'debit', '2026-02-25', 'HDFC Bank', 'XX1234', 'Cafe', 'dining', 'dining', 'suggested', 'none', 'none', 'persisted', '2026-02-25 09:00:00'), ($1, 'c-1', 'raw', 'raw', 3000, 'debit', '2026-03-20', 'HDFC Bank', 'XX1234', 'Store', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted', '2026-03-20 09:00:00'), ($1, 'c-2', 'raw', 'raw', 3000, 'debit', '2026-03-25', 'HDFC Bank', 'XX1234', 'Store', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted', '2026-03-25 09:00:00')",
+        )
+        .bind(account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.trend_alert.window_preset, "30d");
+        assert_eq!(baseline.trend_alert.current_spend_minor, 7000);
+        assert_eq!(baseline.trend_alert.baseline_spend_minor, 1000);
+        assert!(baseline.trend_alert.delta_percent > 590.0);
+        assert!(baseline.trend_alert.is_alert);
+        assert!(baseline.trend_alert.reason.contains("above baseline"));
+    }
+
+    #[tokio::test]
+    async fn builds_running_balance_points_in_stable_ascending_order() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "Axis".to_string(),
+                account_number: "AB12".to_string(),
+                opening_balance_minor: 10000,
+            },
+        )
+        .await
+        .expect("account should be created");
+
+        sqlx::query("UPDATE ledger_entries SET created_at = '2026-04-30 09:00:00' WHERE account_id = $1")
+            .bind(account.account_id)
+            .execute(&pool)
+            .await
+            .expect("opening entry timestamp should be deterministic for running balance window");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state, created_at) VALUES ($1, 'fp-1', 'raw', 'raw', 500, 'debit', '2026-05-01', 'Axis', 'AB12', 'Metro', 'transport', 'transport', 'suggested', 'none', 'none', 'persisted', '2026-05-01 10:00:00'), ($1, 'fp-2', 'raw', 'raw', 2000, 'credit', '2026-05-02', 'Axis', 'AB12', 'Employer', 'salary', 'salary', 'suggested', 'none', 'none', 'persisted', '2026-05-02 10:00:00')",
+        )
+        .bind(account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.running_balance.window_preset, "30d");
+        assert_eq!(baseline.running_balance.points.len(), 3);
+
+        for window in baseline.running_balance.points.windows(2) {
+            assert!(window[0].timestamp <= window[1].timestamp);
+            if window[0].timestamp == window[1].timestamp {
+                assert!(window[0].entry_id <= window[1].entry_id);
+            }
+        }
+
+        assert_eq!(baseline.running_balance.points[0].balance_minor, 10000);
+        assert_eq!(baseline.running_balance.points[1].delta_minor, -500);
+        assert_eq!(baseline.running_balance.points[2].delta_minor, 2000);
+        assert_eq!(baseline.running_balance.points[2].balance_minor, 11500);
     }
 
     #[tokio::test]
@@ -911,6 +1029,20 @@ pub(crate) async fn get_ledger_baseline_with_pool(
             entries: Vec::new(),
             category_insights: Vec::new(),
             merchant_insights: Vec::new(),
+            trend_alert: TrendAlertSummary {
+                window_preset: "30d",
+                current_spend_minor: 0,
+                baseline_spend_minor: 0,
+                delta_percent: 0.0,
+                threshold_percent: 20.0,
+                is_alert: false,
+                reason: "Not enough persisted debit history to compare trend windows."
+                    .to_string(),
+            },
+            running_balance: RunningBalanceSummary {
+                window_preset: "30d",
+                points: Vec::new(),
+            },
             ordering: "created_at_desc_id_desc",
         });
     };
@@ -999,6 +1131,9 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         })
         .collect();
 
+    let trend_alert = compute_trend_alert(pool, account_id).await?;
+    let running_balance = compute_running_balance(pool, account_id).await?;
+
     Ok(LedgerBaselineResponse {
         account: Some(LedgerAccountSummary {
             id: account_id,
@@ -1009,6 +1144,133 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         entries,
         category_insights,
         merchant_insights,
+        trend_alert,
+        running_balance,
         ordering: "created_at_desc_id_desc",
+    })
+}
+
+async fn compute_trend_alert(
+    pool: &Pool<Sqlite>,
+    account_id: i64,
+) -> Result<TrendAlertSummary, CommandError> {
+    const WINDOW_PRESET: &str = "30d";
+    const THRESHOLD_PERCENT: f64 = 20.0;
+
+    let row = sqlx::query(
+        "WITH latest AS (SELECT MAX(transaction_date) AS latest_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit'), windows AS (SELECT latest_date, date(latest_date, '-29 day') AS current_start, date(latest_date, '-59 day') AS baseline_start, date(latest_date, '-30 day') AS baseline_end FROM latest) SELECT COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.current_start AND windows.latest_date THEN ct.amount_minor ELSE 0 END), 0) AS current_spend_minor, COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.baseline_start AND windows.baseline_end THEN ct.amount_minor ELSE 0 END), 0) AS baseline_spend_minor, windows.latest_date AS latest_date FROM windows LEFT JOIN capture_transactions ct ON ct.account_id = $1 AND ct.save_state = 'persisted' AND ct.direction = 'debit'",
+    )
+    .bind(account_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let current_spend_minor = row.get::<i64, _>("current_spend_minor");
+    let baseline_spend_minor = row.get::<i64, _>("baseline_spend_minor");
+    let latest_date = row.get::<Option<String>, _>("latest_date");
+
+    if latest_date.is_none() {
+        return Ok(TrendAlertSummary {
+            window_preset: WINDOW_PRESET,
+            current_spend_minor: 0,
+            baseline_spend_minor: 0,
+            delta_percent: 0.0,
+            threshold_percent: THRESHOLD_PERCENT,
+            is_alert: false,
+            reason: "Not enough persisted debit history to compare trend windows.".to_string(),
+        });
+    }
+
+    let delta_percent = if baseline_spend_minor > 0 {
+        ((current_spend_minor - baseline_spend_minor) as f64 / baseline_spend_minor as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let is_alert = baseline_spend_minor > 0 && delta_percent >= THRESHOLD_PERCENT;
+
+    let reason = if baseline_spend_minor <= 0 {
+        "Not enough persisted debit history to compare trend windows.".to_string()
+    } else if is_alert {
+        format!(
+            "Current window spend is {:.1}% above baseline.",
+            delta_percent
+        )
+    } else {
+        format!(
+            "Current window spend is {:.1}% versus baseline and below alert threshold.",
+            delta_percent
+        )
+    };
+
+    Ok(TrendAlertSummary {
+        window_preset: WINDOW_PRESET,
+        current_spend_minor,
+        baseline_spend_minor,
+        delta_percent,
+        threshold_percent: THRESHOLD_PERCENT,
+        is_alert,
+        reason,
+    })
+}
+
+async fn compute_running_balance(
+    pool: &Pool<Sqlite>,
+    account_id: i64,
+) -> Result<RunningBalanceSummary, CommandError> {
+    const WINDOW_PRESET: &str = "30d";
+
+    let event_rows = sqlx::query(
+        "SELECT id, entry_kind, delta_minor, created_at FROM (SELECT id, entry_kind, amount_minor AS delta_minor, created_at FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS delta_minor, created_at FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted') ORDER BY created_at ASC, id ASC, entry_kind ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    if event_rows.is_empty() {
+        return Ok(RunningBalanceSummary {
+            window_preset: WINDOW_PRESET,
+            points: Vec::new(),
+        });
+    }
+
+    let max_timestamp = event_rows
+        .last()
+        .map(|row| row.get::<String, _>("created_at"))
+        .unwrap_or_default();
+
+    let cutoff_timestamp = sqlx::query("SELECT datetime($1, '-29 day') AS cutoff")
+        .bind(&max_timestamp)
+        .fetch_one(pool)
+        .await
+        .map_err(|error| CommandError::persistence(error.to_string()))?
+        .get::<String, _>("cutoff");
+
+    let mut running_balance_minor = 0_i64;
+    let mut points = Vec::new();
+
+    for row in event_rows {
+        let timestamp = row.get::<String, _>("created_at");
+        let delta_minor = row.get::<i64, _>("delta_minor");
+        let entry_id = row.get::<i64, _>("id");
+        let entry_kind = row.get::<String, _>("entry_kind");
+
+        running_balance_minor += delta_minor;
+
+        if timestamp >= cutoff_timestamp {
+            points.push(RunningBalancePoint {
+                timestamp,
+                balance_minor: running_balance_minor,
+                delta_minor,
+                entry_id,
+                entry_kind,
+            });
+        }
+    }
+
+    Ok(RunningBalanceSummary {
+        window_preset: WINDOW_PRESET,
+        points,
     })
 }

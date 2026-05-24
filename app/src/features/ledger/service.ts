@@ -45,11 +45,36 @@ export type LedgerMerchantInsightData = {
   lastSeenDate?: string;
 };
 
+export type LedgerTrendAlertData = {
+  windowPreset: string;
+  currentSpendMinor: number;
+  baselineSpendMinor: number;
+  deltaPercent: number;
+  thresholdPercent: number;
+  isAlert: boolean;
+  reason: string;
+};
+
+export type RunningBalancePointData = {
+  timestamp: string;
+  balanceMinor: number;
+  deltaMinor: number;
+  entryId: number;
+  entryKind: string;
+};
+
+export type LedgerRunningBalanceData = {
+  windowPreset: string;
+  points: RunningBalancePointData[];
+};
+
 export type LedgerBaselineData = {
   account: LedgerAccountData | null;
   entries: LedgerEntryData[];
   categoryInsights?: LedgerCategoryInsightData[];
   merchantInsights?: LedgerMerchantInsightData[];
+  trendAlert?: LedgerTrendAlertData;
+  runningBalance?: LedgerRunningBalanceData;
   ordering: string;
 };
 

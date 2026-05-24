@@ -46,11 +46,36 @@ export const merchantInsightSchema = z.object({
   lastSeenDate: z.string().min(1).optional(),
 });
 
+export const trendAlertSchema = z.object({
+  windowPreset: z.string().min(1),
+  currentSpendMinor: z.number().int(),
+  baselineSpendMinor: z.number().int(),
+  deltaPercent: z.number(),
+  thresholdPercent: z.number(),
+  isAlert: z.boolean(),
+  reason: z.string().min(1),
+});
+
+export const runningBalancePointSchema = z.object({
+  timestamp: z.string().min(1),
+  balanceMinor: z.number().int(),
+  deltaMinor: z.number().int(),
+  entryId: z.number().int().nonnegative(),
+  entryKind: z.string().min(1),
+});
+
+export const runningBalanceSchema = z.object({
+  windowPreset: z.string().min(1),
+  points: z.array(runningBalancePointSchema).default([]),
+});
+
 export const ledgerBaselineSchema = z.object({
   account: ledgerAccountSchema.nullable(),
   entries: z.array(ledgerEntrySchema),
   categoryInsights: z.array(categoryInsightSchema).default([]),
   merchantInsights: z.array(merchantInsightSchema).default([]),
+  trendAlert: trendAlertSchema.optional(),
+  runningBalance: runningBalanceSchema.optional(),
   ordering: z.string().min(1),
 });
 

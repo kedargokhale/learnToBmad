@@ -1,6 +1,6 @@
 # Story 3.4: Trend Alerts and Running Balance Visualization
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -15,26 +15,26 @@ so that I can monitor spending changes and financial trajectory.
 
 ## Tasks / Subtasks
 
-- [ ] Define trend and running-balance contracts at the command boundary (AC: 1, 2)
-  - [ ] Extend ledger baseline response to include trend alert summary and running-balance points for the active preset window.
-  - [ ] Keep typed command envelope and deterministic field naming (`camelCase` in frontend payloads).
-- [ ] Implement backend trend alert aggregation (AC: 1)
-  - [ ] Add read-only SQL aggregation to compare current window spend against moving baseline.
-  - [ ] Return explicit threshold metadata and explainable alert reason fields.
-  - [ ] Keep deterministic outcomes for identical persisted data and identical preset window.
-- [ ] Implement backend running-balance series generation (AC: 2)
-  - [ ] Produce ordered balance points using persisted entries plus capture transactions with debit negative and credit positive handling.
-  - [ ] Ensure stable ordering and no hidden mutation.
-- [ ] Build dashboard trend visualization UI (AC: 1, 2)
-  - [ ] Add trend alert card and running-balance visualization region with deterministic empty states.
-  - [ ] Keep non-color communication (labels/icons/text) for alert severity and readiness.
-- [ ] Integrate trends into existing dashboard surface (AC: 1, 2)
-  - [ ] Render trend regions in ledger/dashboard area without breaking capture and account-confirmation flow.
-  - [ ] Refresh trend data only after committed save path baseline refresh.
-- [ ] Add regression coverage (AC: 1, 2)
-  - [ ] Rust tests for trend-threshold determinism, baseline comparison correctness, and stable running-balance ordering.
-  - [ ] Frontend tests for trend alert rendering, running-balance chart/list rendering, and post-save refresh behavior.
-  - [ ] Preserve Story 1.2 deferred account-confirmation behavior and Story 2.5 deterministic save-state semantics.
+- [x] Define trend and running-balance contracts at the command boundary (AC: 1, 2)
+  - [x] Extend ledger baseline response to include trend alert summary and running-balance points for the active preset window.
+  - [x] Keep typed command envelope and deterministic field naming (`camelCase` in frontend payloads).
+- [x] Implement backend trend alert aggregation (AC: 1)
+  - [x] Add read-only SQL aggregation to compare current window spend against moving baseline.
+  - [x] Return explicit threshold metadata and explainable alert reason fields.
+  - [x] Keep deterministic outcomes for identical persisted data and identical preset window.
+- [x] Implement backend running-balance series generation (AC: 2)
+  - [x] Produce ordered balance points using persisted entries plus capture transactions with debit negative and credit positive handling.
+  - [x] Ensure stable ordering and no hidden mutation.
+- [x] Build dashboard trend visualization UI (AC: 1, 2)
+  - [x] Add trend alert card and running-balance visualization region with deterministic empty states.
+  - [x] Keep non-color communication (labels/icons/text) for alert severity and readiness.
+- [x] Integrate trends into existing dashboard surface (AC: 1, 2)
+  - [x] Render trend regions in ledger/dashboard area without breaking capture and account-confirmation flow.
+  - [x] Refresh trend data only after committed save path baseline refresh.
+- [x] Add regression coverage (AC: 1, 2)
+  - [x] Rust tests for trend-threshold determinism, baseline comparison correctness, and stable running-balance ordering.
+  - [x] Frontend tests for trend alert rendering, running-balance chart/list rendering, and post-save refresh behavior.
+  - [x] Preserve Story 1.2 deferred account-confirmation behavior and Story 2.5 deterministic save-state semantics.
 
 ## Dev Notes
 
@@ -193,8 +193,8 @@ Implication: trend visualization work must not reintroduce setup-first assumptio
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Story implementation completed with deterministic trend/running-balance backend read models, dashboard rendering, and full frontend/backend regression pass.
 
 ## Dev Agent Record
 
@@ -207,13 +207,31 @@ GPT-5.3-Codex
 - Workflow configuration resolved via `_bmad/scripts/resolve_customization.py`.
 - Sprint status, planning artifacts, architecture, UX, and prior implementation artifacts analyzed.
 - Current codebase update targets reviewed in frontend and Rust command layers.
+- Implemented `trendAlert` and `runningBalance` fields on `LedgerBaselineResponse` with deterministic 30-day preset logic.
+- Added new UI components for trend signal and running-balance timeline rendering with deterministic empty states.
+- Executed full test suites: `pnpm vitest run` (38 passing) and `cargo test` (42 passing).
 
 ### Completion Notes List
 
-- Story 3.4 context includes explicit non-regression guardrails for onboarding and deterministic save-refresh behavior.
-- Trend and running-balance data contracts are defined for deterministic implementation and testability.
-- Latest package intelligence included without forcing unrelated dependency upgrades.
+- Extended frontend and backend contracts with typed `trendAlert` and `runningBalance` payloads while preserving command envelope conventions.
+- Added read-only SQL + deterministic aggregation for baseline-vs-current trend detection with explicit threshold metadata and explainable reason text.
+- Implemented deterministic running-balance points (`timestamp`, `balanceMinor`, `deltaMinor`, `entryId`, `entryKind`) ordered ascending with stable tiebreakers.
+- Integrated trend and running-balance cards into existing dashboard surface without changing save gating, deferred account confirmation, or refresh-after-commit semantics.
+- Added and passed regression tests covering trend rendering, running-balance rendering, post-save refresh behavior, trend threshold determinism, and running-balance ordering.
+
+## Change Log
+
+- 2026-05-24: Implemented Story 3.4 trend alerts and running balance visualization end-to-end; added backend aggregation, frontend UI surface, contracts/schemas, and regression tests.
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-4-trend-alerts-and-running-balance-visualization.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/App.css
+- app/src/features/dashboard/components/RunningBalanceView.tsx
+- app/src/features/dashboard/components/TrendAlertCard.tsx
+- app/src/features/ledger/components/LedgerBaselineView.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/features/ledger/schema.ts
+- app/src/features/ledger/service.ts
+- app/src-tauri/src/commands/ledger.rs
