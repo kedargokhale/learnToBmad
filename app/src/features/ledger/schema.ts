@@ -32,9 +32,25 @@ export const ledgerAccountSchema = z.object({
   currentBalanceMinor: z.number().int().nonnegative(),
 });
 
+export const categoryInsightSchema = z.object({
+  categoryName: z.string().min(1),
+  totalAmountMinor: z.number().int(),
+  sharePercent: z.number(),
+  transactionCount: z.number().int().nonnegative(),
+});
+
+export const merchantInsightSchema = z.object({
+  merchantOrPayee: z.string().min(1),
+  totalAmountMinor: z.number().int(),
+  transactionCount: z.number().int().nonnegative(),
+  lastSeenDate: z.string().min(1).optional(),
+});
+
 export const ledgerBaselineSchema = z.object({
   account: ledgerAccountSchema.nullable(),
   entries: z.array(ledgerEntrySchema),
+  categoryInsights: z.array(categoryInsightSchema).default([]),
+  merchantInsights: z.array(merchantInsightSchema).default([]),
   ordering: z.string().min(1),
 });
 

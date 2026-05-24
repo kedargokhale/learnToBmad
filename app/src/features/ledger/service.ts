@@ -31,9 +31,25 @@ export type LedgerAccountData = {
   currentBalanceMinor: number;
 };
 
+export type LedgerCategoryInsightData = {
+  categoryName: string;
+  totalAmountMinor: number;
+  sharePercent: number;
+  transactionCount: number;
+};
+
+export type LedgerMerchantInsightData = {
+  merchantOrPayee: string;
+  totalAmountMinor: number;
+  transactionCount: number;
+  lastSeenDate?: string;
+};
+
 export type LedgerBaselineData = {
   account: LedgerAccountData | null;
   entries: LedgerEntryData[];
+  categoryInsights?: LedgerCategoryInsightData[];
+  merchantInsights?: LedgerMerchantInsightData[];
   ordering: string;
 };
 

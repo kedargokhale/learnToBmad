@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { isTauri } from "@tauri-apps/api/core";
@@ -151,6 +151,22 @@ describe("Ledger baseline app flow", () => {
             createdAt: "2026-05-02 10:00:00",
           },
         ],
+        categoryInsights: [
+          {
+            categoryName: "groceries",
+            totalAmountMinor: 125050,
+            sharePercent: 100,
+            transactionCount: 1,
+          },
+        ],
+        merchantInsights: [
+          {
+            merchantOrPayee: "BigBazaar",
+            totalAmountMinor: 125050,
+            transactionCount: 1,
+            lastSeenDate: "2026-05-01",
+          },
+        ],
         ordering: "created_at_desc_id_desc",
       },
     });
@@ -159,6 +175,75 @@ describe("Ledger baseline app flow", () => {
 
     expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
     expect(screen.getByText(/hdfc/i)).toBeInTheDocument();
+  });
+
+  it("renders category and merchant insight cards from persisted baseline data", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [
+          {
+            id: 9,
+            entryKind: "opening_balance",
+            amountMinor: 125050,
+            createdAt: "2026-05-02 10:00:00",
+          },
+        ],
+        categoryInsights: [
+          {
+            categoryName: "groceries",
+            totalAmountMinor: 8200,
+            sharePercent: 62.1,
+            transactionCount: 3,
+          },
+        ],
+        merchantInsights: [
+          {
+            merchantOrPayee: "BigBazaar",
+            totalAmountMinor: 8200,
+            transactionCount: 3,
+            lastSeenDate: "2026-05-03",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/category dominance/i)).toBeInTheDocument();
+    expect(screen.getByText(/merchant focus/i)).toBeInTheDocument();
+    expect(screen.getByText(/groceries/i)).toBeInTheDocument();
+    expect(screen.getByText(/bigbazaar/i)).toBeInTheDocument();
+  });
+
+  it("shows deterministic empty states when no persisted insight rows are available", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        categoryInsights: [],
+        merchantInsights: [],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/no persisted debit transactions in this period yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no merchant activity available for this period yet/i)).toBeInTheDocument();
   });
 
   it("does not show account setup before the first save-triggered new-account flow", async () => {
@@ -295,6 +380,135 @@ describe("Ledger baseline app flow", () => {
       expect(attemptTransactionSave).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
+  });
+
+  it("refreshes insight cards after committed save baseline refresh", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockReset();
+    vi.mocked(parseTransactionMessage).mockReset();
+    vi.mocked(attemptTransactionSave).mockReset();
+
+    vi.mocked(getLedgerBaseline)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          account: {
+            id: 1,
+            bankName: "HDFC Bank",
+            accountNumber: "XX1234",
+            currentBalanceMinor: 125050,
+          },
+          entries: [],
+          categoryInsights: [
+            {
+              categoryName: "groceries",
+              totalAmountMinor: 1200,
+              sharePercent: 100,
+              transactionCount: 1,
+            },
+          ],
+          merchantInsights: [
+            {
+              merchantOrPayee: "OldMerchant",
+              totalAmountMinor: 1200,
+              transactionCount: 1,
+              lastSeenDate: "2026-05-01",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      })
+      .mockResolvedValue({
+        ok: true,
+        data: {
+          account: {
+            id: 1,
+            bankName: "HDFC Bank",
+            accountNumber: "XX1234",
+            currentBalanceMinor: 123800,
+          },
+          entries: [
+            {
+              id: 100,
+              entryKind: "capture_transaction",
+              amountMinor: -1250,
+              createdAt: "2026-05-02 10:00:00",
+              captureTransactionId: 11,
+              finalCategory: "shopping",
+              categorySource: "suggested",
+            },
+          ],
+          categoryInsights: [
+            {
+              categoryName: "shopping",
+              totalAmountMinor: 1250,
+              sharePercent: 100,
+              transactionCount: 1,
+            },
+          ],
+          merchantInsights: [
+            {
+              merchantOrPayee: "CityMall",
+              totalAmountMinor: 1250,
+              transactionCount: 1,
+              lastSeenDate: "2026-05-02",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      });
+
+    vi.mocked(parseTransactionMessage).mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at CityMall.",
+        normalizedText:
+          "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at CityMall.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "CityMall",
+        suggestedCategory: "shopping",
+        finalCategory: "shopping",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    vi.mocked(attemptTransactionSave).mockResolvedValue({
+      ok: true,
+      data: {
+        validationState: "passed",
+        acceptedForWrite: true,
+        checkedFields: [
+          "amountMinor",
+          "direction",
+          "transactionDate",
+          "bankName",
+          "accountNumber",
+          "merchantOrPayee",
+        ],
+        message: "Save committed successfully.",
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/oldmerchant/i)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at CityMall.");
+    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+
+    await waitFor(() => {
+      expect(getLedgerBaseline).toHaveBeenCalled();
+    });
+    const merchantCard = await screen.findByRole("article", { name: /merchant focus/i });
+    expect(within(merchantCard).getByText(/citymall/i)).toBeInTheDocument();
+    expect(screen.queryByText(/oldmerchant/i)).not.toBeInTheDocument();
   });
 
   it("supports post-save category override from ledger history", async () => {

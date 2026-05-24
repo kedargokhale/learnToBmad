@@ -52,7 +52,28 @@ pub struct LedgerAccountSummary {
 pub struct LedgerBaselineResponse {
     pub account: Option<LedgerAccountSummary>,
     pub entries: Vec<LedgerEntrySummary>,
+    pub category_insights: Vec<CategoryInsightSummary>,
+    pub merchant_insights: Vec<MerchantInsightSummary>,
     pub ordering: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryInsightSummary {
+    pub category_name: String,
+    pub total_amount_minor: i64,
+    pub share_percent: f64,
+    pub transaction_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MerchantInsightSummary {
+    pub merchant_or_payee: String,
+    pub total_amount_minor: i64,
+    pub transaction_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -558,7 +579,105 @@ mod tests {
 
         assert!(baseline.account.is_none());
         assert!(baseline.entries.is_empty());
+        assert!(baseline.category_insights.is_empty());
+        assert!(baseline.merchant_insights.is_empty());
         assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn computes_category_and_merchant_insights_for_persisted_debits_only() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "HDFC Bank".to_string(),
+                account_number: "XX1234".to_string(),
+                opening_balance_minor: 10000,
+            },
+        )
+        .await
+        .expect("account should be created");
+
+        let other_account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "ICICI".to_string(),
+                account_number: "YY9876".to_string(),
+                opening_balance_minor: 5000,
+            },
+        )
+        .await
+        .expect("second account should be created");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state) VALUES ($1, 'fp-1', 'raw', 'raw', 5000, 'debit', '2026-05-01', 'HDFC Bank', 'XX1234', 'BigBazaar', 'groceries', 'groceries', 'suggested', 'none', 'none', 'persisted'), ($1, 'fp-2', 'raw', 'raw', 2500, 'debit', '2026-05-03', 'HDFC Bank', 'XX1234', 'BigBazaar', 'groceries', 'groceries', 'suggested', 'none', 'none', 'persisted'), ($1, 'fp-3', 'raw', 'raw', 7000, 'debit', '2026-05-04', 'HDFC Bank', 'XX1234', 'FuelHub', 'transport', 'transport', 'suggested', 'none', 'none', 'persisted'), ($1, 'fp-4', 'raw', 'raw', 6000, 'credit', '2026-05-06', 'HDFC Bank', 'XX1234', 'SalaryCo', 'salary', 'salary', 'suggested', 'none', 'none', 'persisted'), ($2, 'fp-5', 'raw', 'raw', 9900, 'debit', '2026-05-05', 'ICICI', 'YY9876', 'OtherMerchant', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted')",
+        )
+        .bind(account.account_id)
+        .bind(other_account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.category_insights.len(), 2);
+        assert_eq!(baseline.category_insights[0].category_name, "groceries");
+        assert_eq!(baseline.category_insights[0].total_amount_minor, 7500);
+        assert_eq!(baseline.category_insights[0].transaction_count, 2);
+
+        assert_eq!(baseline.category_insights[1].category_name, "transport");
+        assert_eq!(baseline.category_insights[1].total_amount_minor, 7000);
+        assert_eq!(baseline.category_insights[1].transaction_count, 1);
+
+        assert!((baseline.category_insights[0].share_percent - 51.724137).abs() < 0.0001);
+        assert!((baseline.category_insights[1].share_percent - 48.275862).abs() < 0.0001);
+
+        assert_eq!(baseline.merchant_insights.len(), 2);
+        assert_eq!(baseline.merchant_insights[0].merchant_or_payee, "BigBazaar");
+        assert_eq!(baseline.merchant_insights[0].total_amount_minor, 7500);
+        assert_eq!(baseline.merchant_insights[0].transaction_count, 2);
+        assert_eq!(baseline.merchant_insights[0].last_seen_date.as_deref(), Some("2026-05-03"));
+
+        assert_eq!(baseline.merchant_insights[1].merchant_or_payee, "FuelHub");
+        assert_eq!(baseline.merchant_insights[1].total_amount_minor, 7000);
+        assert_eq!(baseline.merchant_insights[1].transaction_count, 1);
+        assert_eq!(baseline.merchant_insights[1].last_seen_date.as_deref(), Some("2026-05-04"));
+    }
+
+    #[tokio::test]
+    async fn orders_merchant_insights_deterministically_with_tie_breakers() {
+        let pool = setup_pool().await;
+
+        let account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "Axis".to_string(),
+                account_number: "AB12".to_string(),
+                opening_balance_minor: 100,
+            },
+        )
+        .await
+        .expect("account should be created");
+
+        sqlx::query(
+            "INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state) VALUES ($1, 'fp-1', 'raw', 'raw', 5000, 'debit', '2026-05-01', 'Axis', 'AB12', 'Merchant B', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted'), ($1, 'fp-2', 'raw', 'raw', 5000, 'debit', '2026-05-02', 'Axis', 'AB12', 'Merchant A', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted'), ($1, 'fp-3', 'raw', 'raw', 5000, 'debit', '2026-05-03', 'Axis', 'AB12', 'Merchant A', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted')",
+        )
+        .bind(account.account_id)
+        .execute(&pool)
+        .await
+        .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.merchant_insights[0].merchant_or_payee, "Merchant A");
+        assert_eq!(baseline.merchant_insights[0].transaction_count, 2);
+        assert_eq!(baseline.merchant_insights[1].merchant_or_payee, "Merchant B");
+        assert_eq!(baseline.merchant_insights[1].transaction_count, 1);
     }
 
     #[tokio::test]
@@ -790,6 +909,8 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         return Ok(LedgerBaselineResponse {
             account: None,
             entries: Vec::new(),
+            category_insights: Vec::new(),
+            merchant_insights: Vec::new(),
             ordering: "created_at_desc_id_desc",
         });
     };
@@ -828,6 +949,56 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         })
         .collect();
 
+    let category_rows = sqlx::query(
+        "SELECT final_category AS category_name, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit' GROUP BY final_category ORDER BY total_amount_minor DESC, category_name ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let total_debit_minor: i64 = category_rows
+        .iter()
+        .map(|row| row.get::<i64, _>("total_amount_minor"))
+        .sum();
+
+    let category_insights = category_rows
+        .into_iter()
+        .map(|row| {
+            let total_amount_minor = row.get::<i64, _>("total_amount_minor");
+            let share_percent = if total_debit_minor > 0 {
+                (total_amount_minor as f64 / total_debit_minor as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            CategoryInsightSummary {
+                category_name: row.get::<String, _>("category_name"),
+                total_amount_minor,
+                share_percent,
+                transaction_count: row.get::<i64, _>("transaction_count"),
+            }
+        })
+        .collect();
+
+    let merchant_rows = sqlx::query(
+        "SELECT merchant_or_payee, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count, MAX(transaction_date) AS last_seen_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit' GROUP BY merchant_or_payee ORDER BY total_amount_minor DESC, transaction_count DESC, merchant_or_payee ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    let merchant_insights = merchant_rows
+        .into_iter()
+        .map(|row| MerchantInsightSummary {
+            merchant_or_payee: row.get::<String, _>("merchant_or_payee"),
+            total_amount_minor: row.get::<i64, _>("total_amount_minor"),
+            transaction_count: row.get::<i64, _>("transaction_count"),
+            last_seen_date: row.get::<Option<String>, _>("last_seen_date"),
+        })
+        .collect();
+
     Ok(LedgerBaselineResponse {
         account: Some(LedgerAccountSummary {
             id: account_id,
@@ -836,6 +1007,8 @@ pub(crate) async fn get_ledger_baseline_with_pool(
             current_balance_minor,
         }),
         entries,
+        category_insights,
+        merchant_insights,
         ordering: "created_at_desc_id_desc",
     })
 }

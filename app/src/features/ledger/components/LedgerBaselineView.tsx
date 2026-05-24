@@ -5,6 +5,7 @@ import {
   categoryLabel,
   type CategoryCode,
 } from "../../categorization/schema";
+import { InsightSummary } from "../../dashboard/components/InsightSummary";
 
 type LedgerBaselineViewProps = {
   baseline: LedgerBaselineData;
@@ -14,6 +15,8 @@ type LedgerBaselineViewProps = {
 
 export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: LedgerBaselineViewProps) {
   const account = baseline.account;
+  const categoryInsights = baseline.categoryInsights ?? [];
+  const merchantInsights = baseline.merchantInsights ?? [];
   const [draftCategories, setDraftCategories] = useState<Record<number, CategoryCode>>({});
   const [updatingTransactionId, setUpdatingTransactionId] = useState<number | null>(null);
 
@@ -57,6 +60,8 @@ export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: Le
       </div>
 
       <div className="ledger-card">
+        <InsightSummary categoryInsights={categoryInsights} merchantInsights={merchantInsights} />
+
         <div className="ledger-card-header">
           <h2>Transaction history</h2>
           {onRefresh ? (

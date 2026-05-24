@@ -153,6 +153,67 @@ select {
   padding: 28px;
 }
 
+.insight-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.story-card {
+  border: 1px solid rgba(20, 33, 61, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 14px;
+}
+
+.story-card-header h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.story-card-header p {
+  margin: 4px 0 0;
+  color: #52627f;
+  font-size: 0.9rem;
+}
+
+.story-card-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.story-card-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(237, 243, 255, 0.55);
+}
+
+.story-card-item span {
+  font-weight: 700;
+  color: #20437c;
+}
+
+.story-card-meta {
+  color: #52627f;
+  font-size: 0.85rem;
+}
+
+.story-card-empty {
+  margin-top: 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #edf3ff;
+  color: #20437c;
+}
+
 .ledger-card h2 {
   margin: 0 0 8px;
   font-size: 1.45rem;
@@ -397,6 +458,10 @@ select {
 @media (max-width: 860px) {
   .ledger-screen,
   .capture-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-summary {
     grid-template-columns: 1fr;
   }
 

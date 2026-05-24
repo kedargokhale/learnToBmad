@@ -152,6 +152,8 @@ function App() {
         setBaseline({
           account: null,
           entries: [],
+          categoryInsights: [],
+          merchantInsights: [],
           ordering: "created_at_desc_id_desc",
         });
         return;
@@ -165,6 +167,8 @@ function App() {
       setBaseline({
         account: null,
         entries: [],
+        categoryInsights: [],
+        merchantInsights: [],
         ordering: "created_at_desc_id_desc",
       });
     } finally {

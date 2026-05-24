@@ -1,6 +1,6 @@
 # Story 3.3: Category and Merchant Insight Cards
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -15,24 +15,24 @@ so that I can quickly understand where money is going.
 
 ## Tasks / Subtasks
 
-- [ ] Define dashboard insight contracts at the command boundary (AC: 1, 2)
-  - [ ] Extend baseline/dashboard response shape to include category and merchant aggregates for current preset window.
-  - [ ] Keep typed command envelope and deterministic field naming (`camelCase` to frontend).
-- [ ] Implement backend category and merchant aggregation queries (AC: 1, 2)
-  - [ ] Add read-only SQL aggregation for category totals and share percentage.
-  - [ ] Add read-only SQL aggregation for top merchants with frequency and amount.
-  - [ ] Ensure both queries are scoped to persisted rows only and are deterministic for identical inputs.
-- [ ] Build UI story cards for insight rendering (AC: 1)
-  - [ ] Add reusable story-card component primitive for compact insight presentation.
-  - [ ] Add category dominance card and merchant focus card layouts with deterministic empty states.
-  - [ ] Keep non-color cues (labels/icons/text) aligned to UX accessibility guidance.
-- [ ] Integrate insight cards into current dashboard surface (AC: 1, 2)
-  - [ ] Render cards in existing ledger/dashboard section without breaking capture flow.
-  - [ ] Refresh insight values only after committed save path baseline refresh.
-- [ ] Add regression coverage (AC: 1, 2)
-  - [ ] Rust tests for aggregate correctness, deterministic ordering, and no-account empty states.
-  - [ ] Frontend tests for card rendering, empty states, and post-save refresh behavior.
-  - [ ] Keep Story 2.x deterministic save and Story 1.2 deferred onboarding tests green.
+- [x] Define dashboard insight contracts at the command boundary (AC: 1, 2)
+  - [x] Extend baseline/dashboard response shape to include category and merchant aggregates for current preset window.
+  - [x] Keep typed command envelope and deterministic field naming (`camelCase` to frontend).
+- [x] Implement backend category and merchant aggregation queries (AC: 1, 2)
+  - [x] Add read-only SQL aggregation for category totals and share percentage.
+  - [x] Add read-only SQL aggregation for top merchants with frequency and amount.
+  - [x] Ensure both queries are scoped to persisted rows only and are deterministic for identical inputs.
+- [x] Build UI story cards for insight rendering (AC: 1)
+  - [x] Add reusable story-card component primitive for compact insight presentation.
+  - [x] Add category dominance card and merchant focus card layouts with deterministic empty states.
+  - [x] Keep non-color cues (labels/icons/text) aligned to UX accessibility guidance.
+- [x] Integrate insight cards into current dashboard surface (AC: 1, 2)
+  - [x] Render cards in existing ledger/dashboard section without breaking capture flow.
+  - [x] Refresh insight values only after committed save path baseline refresh.
+- [x] Add regression coverage (AC: 1, 2)
+  - [x] Rust tests for aggregate correctness, deterministic ordering, and no-account empty states.
+  - [x] Frontend tests for card rendering, empty states, and post-save refresh behavior.
+  - [x] Keep Story 2.x deterministic save and Story 1.2 deferred onboarding tests green.
 
 ## Dev Notes
 
@@ -176,8 +176,8 @@ Implication: do not regress save-triggered onboarding and deterministic refresh 
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Implemented deterministic category/merchant insight cards across backend and frontend, with regression coverage green in both Vitest and cargo test suites.
 
 ## Dev Agent Record
 
@@ -190,13 +190,32 @@ GPT-5.3-Codex
 - Workflow configuration resolved through `_bmad/scripts/resolve_customization.py`.
 - Sprint status, planning artifacts, architecture, UX, and prior implementation artifacts analyzed.
 - Current codebase update targets reviewed in frontend and Rust command layers.
+- Added deterministic read-only insight aggregations to baseline command response.
+- Executed `pnpm test` in `app` (36 passed).
+- Executed `cargo test` in `app/src-tauri` (40 passed).
 
 ### Completion Notes List
 
-- Story 3.3 context includes concrete update-file guardrails and deterministic aggregation requirements.
-- Cross-story regression constraints (Story 1.2 correction and Story 2.5 deterministic save behavior) are explicitly preserved.
-- Latest package-version intelligence included without forcing unnecessary dependency upgrades.
+- Extended ledger baseline command and typed frontend service contract with `categoryInsights` and `merchantInsights` camelCase payloads.
+- Implemented deterministic backend SQL aggregations for debit-only persisted capture rows with explicit ordering tie-breaks.
+- Added reusable dashboard UI primitives (`StoryCard`, `InsightSummary`) and integrated insight cards into the ledger baseline surface with deterministic empty states.
+- Preserved save lifecycle rule where baseline and insights refresh only after committed save path (`acceptedForWrite`).
+- Added backend and frontend regression tests for aggregate correctness, deterministic ordering, empty states, and post-save refresh.
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-3-category-and-merchant-insight-cards.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/App.css
+- app/src/App.tsx
+- app/src/features/dashboard/components/InsightSummary.tsx
+- app/src/features/dashboard/components/StoryCard.tsx
+- app/src/features/ledger/components/LedgerBaselineView.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/features/ledger/schema.ts
+- app/src/features/ledger/service.ts
+- app/src-tauri/src/commands/ledger.rs
+
+## Change Log
+
+- 2026-05-22: Implemented Story 3.3 category and merchant insight cards end-to-end with deterministic backend aggregation, dashboard integration, and passing regression suites.
