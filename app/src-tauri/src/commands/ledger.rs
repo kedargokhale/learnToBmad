@@ -1052,7 +1052,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
     let account_number = account_row.get::<String, _>("account_number");
 
     let current_balance_minor = sqlx::query(
-        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM (SELECT amount_minor FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor FROM capture_transactions WHERE account_id = $1)",
+        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM (SELECT amount_minor FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted')",
     )
     .bind(account_id)
     .fetch_one(pool)
@@ -1221,7 +1221,7 @@ async fn compute_running_balance(
     const WINDOW_PRESET: &str = "30d";
 
     let event_rows = sqlx::query(
-        "SELECT id, entry_kind, delta_minor, created_at FROM (SELECT id, entry_kind, amount_minor AS delta_minor, created_at FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS delta_minor, created_at FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted') ORDER BY created_at ASC, id ASC, entry_kind ASC",
+        "SELECT id, entry_kind, delta_minor, event_date FROM (SELECT id, entry_kind, amount_minor AS delta_minor, date(created_at) AS event_date FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS delta_minor, transaction_date AS event_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted') ORDER BY event_date ASC, id ASC, entry_kind ASC",
     )
     .bind(account_id)
     .fetch_all(pool)
@@ -1235,13 +1235,13 @@ async fn compute_running_balance(
         });
     }
 
-    let max_timestamp = event_rows
+    let max_event_date = event_rows
         .last()
-        .map(|row| row.get::<String, _>("created_at"))
+        .map(|row| row.get::<String, _>("event_date"))
         .unwrap_or_default();
 
-    let cutoff_timestamp = sqlx::query("SELECT datetime($1, '-29 day') AS cutoff")
-        .bind(&max_timestamp)
+    let cutoff_date = sqlx::query("SELECT date($1, '-29 day') AS cutoff")
+        .bind(&max_event_date)
         .fetch_one(pool)
         .await
         .map_err(|error| CommandError::persistence(error.to_string()))?
@@ -1251,14 +1251,14 @@ async fn compute_running_balance(
     let mut points = Vec::new();
 
     for row in event_rows {
-        let timestamp = row.get::<String, _>("created_at");
+        let timestamp = row.get::<String, _>("event_date");
         let delta_minor = row.get::<i64, _>("delta_minor");
         let entry_id = row.get::<i64, _>("id");
         let entry_kind = row.get::<String, _>("entry_kind");
 
         running_balance_minor += delta_minor;
 
-        if timestamp >= cutoff_timestamp {
+        if timestamp >= cutoff_date {
             points.push(RunningBalancePoint {
                 timestamp,
                 balance_minor: running_balance_minor,

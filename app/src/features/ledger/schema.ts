@@ -74,8 +74,8 @@ export const ledgerBaselineSchema = z.object({
   entries: z.array(ledgerEntrySchema),
   categoryInsights: z.array(categoryInsightSchema).default([]),
   merchantInsights: z.array(merchantInsightSchema).default([]),
-  trendAlert: trendAlertSchema.optional(),
-  runningBalance: runningBalanceSchema.optional(),
+  trendAlert: trendAlertSchema,
+  runningBalance: runningBalanceSchema,
   ordering: z.string().min(1),
 });
 

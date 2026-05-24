@@ -73,8 +73,8 @@ export type LedgerBaselineData = {
   entries: LedgerEntryData[];
   categoryInsights?: LedgerCategoryInsightData[];
   merchantInsights?: LedgerMerchantInsightData[];
-  trendAlert?: LedgerTrendAlertData;
-  runningBalance?: LedgerRunningBalanceData;
+  trendAlert: LedgerTrendAlertData;
+  runningBalance: LedgerRunningBalanceData;
   ordering: string;
 };
 

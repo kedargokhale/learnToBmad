@@ -1,6 +1,6 @@
 # Story 3.4: Trend Alerts and Running Balance Visualization
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -35,6 +35,14 @@ so that I can monitor spending changes and financial trajectory.
   - [x] Rust tests for trend-threshold determinism, baseline comparison correctness, and stable running-balance ordering.
   - [x] Frontend tests for trend alert rendering, running-balance chart/list rendering, and post-save refresh behavior.
   - [x] Preserve Story 1.2 deferred account-confirmation behavior and Story 2.5 deterministic save-state semantics.
+
+### Review Findings
+
+- [x] [Review][Defer] Define preset-window product behavior for Story 3.4 — AC2 requires running-balance display for selected preset windows, but current implementation is hard-coded to `30d` and exposes no selection path (auditor+edge). Deferred by user due to scope limiting and tight timeline.
+- [x] [Review][Patch] Align trend/running period semantics and reconciliation expectations [app/src-tauri/src/commands/ledger.rs:1161]
+- [x] [Review][Patch] Enforce required trend/running contract at frontend boundary [app/src/features/ledger/schema.ts:77]
+- [x] [Review][Defer] Audit possible duplicate counting across `ledger_entries` and `capture_transactions` in running-balance stream [app/src-tauri/src/commands/ledger.rs:1224] — deferred, pre-existing
+- [x] [Review][Defer] Optimize running-balance query to avoid full-history fetch for 30d output [app/src-tauri/src/commands/ledger.rs:1224] — deferred, pre-existing
 
 ## Dev Notes
 

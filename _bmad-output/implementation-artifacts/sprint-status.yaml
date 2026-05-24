@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-24T16:15:00+05:30
+last_updated: 2026-05-24T16:28:55+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
@@ -79,7 +79,7 @@ development_status:
   3-1-day-1-category-taxonomy-and-suggested-categorization: done
   3-2-learning-from-category-corrections: backlog
   3-3-category-and-merchant-insight-cards: done
-  3-4-trend-alerts-and-running-balance-visualization: review
+  3-4-trend-alerts-and-running-balance-visualization: in-progress
   3-5-capture-surface-and-readiness-state-components: ready-for-dev
   3-6-correction-and-confidence-guidance-components: backlog
   3-7-insight-summary-story-components: ready-for-dev
