@@ -628,6 +628,28 @@ select {
   gap: 10px;
 }
 
+.readiness-summary-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.capture-confirmation-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  max-width: min(420px, calc(100vw - 36px));
+  border-radius: 14px;
+  border: 1px solid rgba(27, 107, 55, 0.25);
+  background: #ebf7ef;
+  color: #1b6b37;
+  box-shadow: 0 14px 30px rgba(20, 33, 61, 0.18);
+  padding: 12px 14px;
+}
+
 @media (max-width: 860px) {
   .ledger-screen,
   .capture-grid {
@@ -654,6 +676,18 @@ select {
   .ledger-hero,
   .ledger-card {
     padding: 24px;
+  }
+
+  .readiness-summary-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .capture-confirmation-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 14px;
+    max-width: none;
   }
 }
 

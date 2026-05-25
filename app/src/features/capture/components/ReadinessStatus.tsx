@@ -1,4 +1,11 @@
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import {
   type AccountMismatchResolution,
   type BlockedFieldReason,
   blockedFieldReasonSchema,
@@ -106,6 +113,40 @@ export function ReadinessStatus({
     accountMismatchSignal?.requiresResolution && !mismatchResolution,
   );
   const requiresDuplicateDecision = Boolean(duplicateCandidateSignal?.detected && duplicateCandidateSignal.requiresDecision && !duplicateDecision);
+  const detailsIssueTriggered = Boolean(
+    viewModel?.readinessState !== "ready" ||
+      blockedFields.length > 0 ||
+      saveError ||
+      requiresMismatchResolution ||
+      requiresDuplicateDecision,
+  );
+  const disclosureResetKey = useMemo(() => {
+    if (!viewModel) {
+      return "no-preview";
+    }
+
+    return [
+      viewModel.normalizedText,
+      viewModel.amountMinor,
+      viewModel.direction,
+      viewModel.transactionDate,
+      viewModel.bankName,
+      viewModel.accountNumber,
+      viewModel.merchantOrPayee,
+      detailsIssueTriggered,
+    ].join("|");
+  }, [detailsIssueTriggered, viewModel]);
+  const [showDetails, setShowDetails] = useState(detailsIssueTriggered);
+  const detailsToggleRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    setShowDetails(detailsIssueTriggered);
+  }, [detailsIssueTriggered, disclosureResetKey]);
+
+  function collapseDetails() {
+    setShowDetails(false);
+    detailsToggleRef.current?.focus();
+  }
 
   if (error) {
     return (
@@ -185,17 +226,52 @@ export function ReadinessStatus({
         </div>
       </div>
 
-      <ul className="capture-field-list" aria-label="Parsed critical field status">
-        {fields.map(([label, value]) => (
-          <li key={label} className="history-item">
-            <div>
-              <strong>{label}</strong>
-              <div className="history-meta">{value === null ? "Missing" : "Present"}</div>
-            </div>
-            <div className="history-amount">{value === null ? "-" : String(value)}</div>
-          </li>
-        ))}
-      </ul>
+      <div
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && showDetails) {
+            event.preventDefault();
+            collapseDetails();
+          }
+        }}
+      >
+        <div className="readiness-summary-row">
+          <div className="hint">
+            {detailsIssueTriggered
+              ? "Detailed guidance is expanded because there are issues to resolve."
+              : "Everything looks ready. Parsed field details stay hidden unless you ask for them."}
+          </div>
+          <button
+            ref={detailsToggleRef}
+            className="secondary-action"
+            type="button"
+            aria-expanded={showDetails}
+            aria-controls="parsed-details"
+            onClick={() => {
+              setShowDetails((current) => !current);
+            }}
+          >
+            {showDetails ? "Hide parsed details" : "Show parsed details"}
+          </button>
+        </div>
+
+        <ul
+          id="parsed-details"
+          className="capture-field-list"
+          aria-label="Parsed critical field status"
+          hidden={!showDetails}
+          aria-hidden={!showDetails}
+        >
+          {fields.map(([label, value]) => (
+            <li key={label} className="history-item">
+              <div>
+                <strong>{label}</strong>
+                <div className="history-meta">{value === null ? "Missing" : "Present"}</div>
+              </div>
+              <div className="history-amount">{value === null ? "-" : String(value)}</div>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="field">
         <label htmlFor="categoryOverride">Category before save</label>
@@ -217,12 +293,12 @@ export function ReadinessStatus({
 
       {viewModel.readinessState !== "ready" ? (
         <div className="blocked-reasons">
-          Saving stays blocked until all critical fields are valid. Open guided corrections to edit only blocked fields.
+          A few details still need review before save can continue. Open guided corrections to fix only the blocked fields.
           {blockedFields.length > 0 ? (
             <ul aria-label="Current blocked field list">
               {blockedFields.map((item) => (
                 <li key={`${item.field}-${item.reason}`}>
-                  {getFieldDisplayName(item.field)}: {item.reason === "missing" ? "missing" : "ambiguous"}. {item.hint}
+                  {getFieldDisplayName(item.field)}: {item.reason === "missing" ? "missing" : "ambiguous"}. Next safe action: {item.hint}
                 </li>
               ))}
             </ul>
@@ -247,14 +323,15 @@ export function ReadinessStatus({
         <div className="status-banner" role="alert">
           <strong>{saveError.message}</strong>
           {saveError.hint ? <div>{saveError.hint}</div> : null}
+          {saveGateDetails?.nextAction ? <div>Next safe action: {saveGateDetails.nextAction}</div> : null}
           {accountMismatchSignal?.requiresResolution ? (
             <div>
-              Non-color cue: Account mismatch resolution is required before save validation can proceed.
+              Non-color cue: Review the account mismatch, then choose how to continue safely.
             </div>
           ) : null}
           {duplicateCandidateSignal?.detected ? (
             <div>
-              Non-color cue: Duplicate decision is required before save validation can proceed.
+              Non-color cue: Choose whether to save as new or skip this duplicate candidate.
             </div>
           ) : null}
           {saveBlockedFields.length > 0 ? (

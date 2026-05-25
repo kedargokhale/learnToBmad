@@ -1,6 +1,6 @@
 # Story 3.8: Progressive Disclosure and Confirmation Feedback
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -16,22 +16,28 @@ so that I can stay focused while still recovering quickly from issues.
 
 ## Tasks / Subtasks
 
-- [ ] Implement compact-by-default readiness presentation (AC: 1, 3)
-  - [ ] Refactor the readiness surface so the always-visible layer shows only the current semantic state, key signal, and required action.
-  - [ ] Hide detailed field-by-field guidance behind explicit expansion, focus, or issue-triggered disclosure rather than rendering the full breakdown at all times.
-- [ ] Add non-disruptive success confirmation patterns (AC: 2)
-  - [ ] Show lightweight success feedback after save and after correction completion using a toast or inline live-region surface.
-  - [ ] Ensure confirmation clears automatically or remains unobtrusive without trapping focus or requiring dismissal.
-- [ ] Rewrite validation and guidance copy to be friendly and actionable (AC: 3)
-  - [ ] Ensure each blocked or failed state explains the next safe action in plain language.
-  - [ ] Preserve explicit account-mismatch and duplicate-decision guidance when those gates are active.
-- [ ] Keep progressive disclosure keyboard-first and deterministic (AC: 1, 2, 3)
-  - [ ] Support Enter, Escape, Tab, and screen-reader announcement flows for expand/collapse and confirmation states.
-  - [ ] Keep save-enable/disable behavior derived from the same source of truth already used by capture state logic.
-- [ ] Add regression and accessibility coverage (AC: 1, 2, 3)
-  - [ ] Extend capture tests for compact-ready state, expansion behavior, friendly error copy, and save/correction confirmation visibility.
-  - [ ] Extend app-flow tests for non-modal save confirmation and no regression in save-triggered account setup.
-  - [ ] Keep existing readiness-state, onboarding-correction, and deterministic save-state tests green.
+- [x] Implement compact-by-default readiness presentation (AC: 1, 3)
+  - [x] Refactor the readiness surface so the always-visible layer shows only the current semantic state, key signal, and required action.
+  - [x] Hide detailed field-by-field guidance behind explicit expansion, focus, or issue-triggered disclosure rather than rendering the full breakdown at all times.
+- [x] Add non-disruptive success confirmation patterns (AC: 2)
+  - [x] Show lightweight success feedback after save and after correction completion using a toast or inline live-region surface.
+  - [x] Ensure confirmation clears automatically or remains unobtrusive without trapping focus or requiring dismissal.
+- [x] Rewrite validation and guidance copy to be friendly and actionable (AC: 3)
+  - [x] Ensure each blocked or failed state explains the next safe action in plain language.
+  - [x] Preserve explicit account-mismatch and duplicate-decision guidance when those gates are active.
+- [x] Keep progressive disclosure keyboard-first and deterministic (AC: 1, 2, 3)
+  - [x] Support Enter, Escape, Tab, and screen-reader announcement flows for expand/collapse and confirmation states.
+  - [x] Keep save-enable/disable behavior derived from the same source of truth already used by capture state logic.
+- [x] Add regression and accessibility coverage (AC: 1, 2, 3)
+  - [x] Extend capture tests for compact-ready state, expansion behavior, friendly error copy, and save/correction confirmation visibility.
+  - [x] Extend app-flow tests for non-modal save confirmation and no regression in save-triggered account setup.
+  - [x] Keep existing readiness-state, onboarding-correction, and deterministic save-state tests green.
+
+### Review Findings
+
+- [x] [Review][Patch] Disclosure toggle a11y semantics should not reference a non-mounted details element and should support robust Escape collapse behavior [app/src/features/capture/components/ReadinessStatus.tsx:232]
+- [x] [Review][Patch] Correction panel should not present "Apply corrections" success flow when no blocked fields remain [app/src/features/capture/components/CorrectionPanel.tsx:69]
+- [x] [Review][Patch] Add regression coverage for confirmation toast auto-dismiss timing and stale announcement prevention [app/src/features/capture/capture.test.tsx:211]
 
 ## Dev Notes
 
@@ -212,27 +218,42 @@ Implication: progressive-disclosure work must not regress dashboard-first first 
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Story 3.8 implementation completed with progressive disclosure, non-modal confirmation feedback, and regression coverage.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-GPT-5.4
+GPT-5.3-Codex
 
 ### Debug Log References
 
 - Workflow configuration resolved through `_bmad/scripts/resolve_customization.py`.
 - Sprint status, planning artifacts, UX and architecture documents, prior story artifacts, and current capture source files analyzed.
 - Package registry versions checked on 2026-05-20 for React, Zod, React Hook Form, Vitest, and Tauri SQL plugin.
+- Implemented compact readiness disclosure controls in `ReadinessStatus` and confirmation toast state wiring in `App`.
+- Executed regression suite with `pnpm test` in `app` and verified 47/47 tests passing.
 
 ### Completion Notes List
 
-- Story 3.8 is anchored to the current capture implementation, including the always-expanded readiness surface and live in-memory correction behavior.
-- Progressive disclosure is scoped as a UI-behavior improvement, not a rewrite of save semantics.
-- Friendly copy, lightweight confirmation, and no-regression requirements for onboarding and save gating are explicit.
+- Progressive disclosure now defaults to compact readiness while preserving issue-triggered and manual detail access.
+- Save and correction completion now publish lightweight, auto-dismissing live-region confirmations without modal interruption.
+- Friendly, actionable next-step guidance now appears for blocked and validation-failed states while preserving mismatch and duplicate decision gates.
+- Full regression validation completed: capture + ledger targeted tests and full app suite all green (47/47).
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-8-progressive-disclosure-and-confirmation-feedback.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/App.tsx
+- app/src/App.css
+- app/src/features/capture/components/CorrectionPanel.tsx
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/components/SaveConfirmationToast.tsx
+- app/src/features/capture/capture.test.tsx
+- app/src/features/ledger/ledger.test.tsx
+
+## Change Log
+
+- 2026-05-25: Implemented Story 3.8 progressive disclosure and non-modal confirmation feedback, expanded regression tests, and validated full app test suite.

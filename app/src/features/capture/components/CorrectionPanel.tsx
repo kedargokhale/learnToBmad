@@ -13,7 +13,7 @@ type CorrectionPanelProps = {
   preview: ParsePreviewViewModel | null;
   correctionValues: Partial<Record<BlockedFieldReason["field"], string>>;
   onCorrectionChange: (field: BlockedFieldReason["field"], value: string) => void;
-  onApply: () => void;
+  onApply: (hadBlockedFields: boolean) => void;
   onClose: () => void;
 };
 
@@ -65,8 +65,11 @@ export function CorrectionPanel({
   onClose,
 }: CorrectionPanelProps) {
   const visibleBlockedFields = useMemo(() => blockedFields, [blockedFields]);
+  const hasBlockedFields = visibleBlockedFields.length > 0;
+  const hasEditedValues = Object.keys(correctionValues).length > 0;
+  const canApplyCorrections = hasBlockedFields || hasEditedValues;
 
-  if (!isOpen || visibleBlockedFields.length === 0 || !preview) {
+  if (!isOpen || !preview) {
     return null;
   }
 
@@ -85,7 +88,12 @@ export function CorrectionPanel({
           const target = event.target as HTMLElement;
           if (target.tagName.toLowerCase() !== "textarea") {
             event.preventDefault();
-            onApply();
+            if (!canApplyCorrections) {
+              onClose();
+              return;
+            }
+
+            onApply(true);
           }
         }
       }}
@@ -99,38 +107,55 @@ export function CorrectionPanel({
       <p className="section-copy">
         Correct only blocked fields. Save retry unlocks automatically once all required fields are valid.
       </p>
-      <ul className="capture-field-list" aria-label="Blocked critical fields needing correction">
-        {visibleBlockedFields.map((item) => {
-          const meta = getInputMeta(item.field);
-          const fallbackValue = getFieldValueForCorrection(preview, item.field);
-          const value = correctionValues[item.field] ?? fallbackValue;
-          const inputId = `correction-${item.field}`;
+      {hasBlockedFields ? (
+        <ul className="capture-field-list" aria-label="Blocked critical fields needing correction">
+          {visibleBlockedFields.map((item) => {
+            const meta = getInputMeta(item.field);
+            const fallbackValue = getFieldValueForCorrection(preview, item.field);
+            const value = correctionValues[item.field] ?? fallbackValue;
+            const inputId = `correction-${item.field}`;
 
-          return (
-            <li key={`${item.field}-${item.reason}`} className="history-item">
-              <div className="field correction-field">
-                <label htmlFor={inputId}>{getFieldDisplayName(item.field)}</label>
-                <div className="history-meta">{item.reason === "missing" ? "Missing" : "Ambiguous"}</div>
-                <input
-                  id={inputId}
-                  type={meta.inputType}
-                  inputMode={item.field === "amountMinor" ? "decimal" : undefined}
-                  value={value}
-                  onChange={(event) => {
-                    onCorrectionChange(item.field, event.target.value);
-                  }}
-                  placeholder={meta.placeholder}
-                />
-                <div className="hint">{item.hint}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+            return (
+              <li key={`${item.field}-${item.reason}`} className="history-item">
+                <div className="field correction-field">
+                  <label htmlFor={inputId}>{getFieldDisplayName(item.field)}</label>
+                  <div className="history-meta">{item.reason === "missing" ? "Missing" : "Ambiguous"}</div>
+                  <input
+                    id={inputId}
+                    type={meta.inputType}
+                    inputMode={item.field === "amountMinor" ? "decimal" : undefined}
+                    value={value}
+                    onChange={(event) => {
+                      onCorrectionChange(item.field, event.target.value);
+                    }}
+                    placeholder={meta.placeholder}
+                  />
+                  <div className="hint">{item.hint}</div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="success-banner" role="status">
+          <strong>All blocked fields look complete.</strong>
+          <div>
+            {canApplyCorrections
+              ? "Apply corrections to continue with save validation."
+              : "Close this panel and continue with save validation."}
+          </div>
+        </div>
+      )}
       <div className="submit-row">
-        <button className="primary-action" type="button" onClick={onApply}>
-          Apply corrections (Enter)
-        </button>
+        {canApplyCorrections ? (
+          <button className="primary-action" type="button" onClick={() => onApply(true)}>
+            Apply corrections (Enter)
+          </button>
+        ) : (
+          <button className="secondary-action" type="button" onClick={onClose}>
+            Close panel (Enter)
+          </button>
+        )}
         <div className="submit-caption">Keyboard-first flow: Tab through fields, Enter to apply, Escape to close.</div>
       </div>
     </section>

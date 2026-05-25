@@ -996,6 +996,8 @@ describe("Ledger baseline app flow", () => {
     const merchantCard = await screen.findByRole("article", { name: /merchant story/i });
     expect(within(merchantCard).getByText(/citymall/i)).toBeInTheDocument();
     expect(screen.queryByText(/oldmerchant/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /capture confirmation/i })).toHaveTextContent(/transaction saved successfully/i);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("supports post-save category override from ledger history", async () => {
