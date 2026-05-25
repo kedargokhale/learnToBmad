@@ -564,10 +564,11 @@ Validation feedback appears in stages, showing only what the user needs to see a
 
 **Primary Actions - Minimal Text:**
 
-- Transaction save: button text = "Save" (not "Save Transaction" or "Complete and View Insight"). Icon optional (diskette or checkmark).
+- Transaction save: button text = "Save" (not "Save Transaction", "Complete and View Insight", or "Run save validation"). Icon optional (diskette or checkmark).
 - Correction commit: button text = "Done" (not "Finish Editing" or "Confirm Corrections"). Clears CorrectionPanel on tap.
 - Dashboard action: button text matches outcome, not process ("Export Data" not "Begin Export", "Clear History" not "Remove All Entries").
 - Keyboard equivalent always available: Enter to save/submit, Escape to cancel/close.
+- Avoid repeated instructional text near primary actions; keep one concise guidance line per state and place detail only in progressive disclosure surfaces.
 
 **Secondary Actions - Contextual Visibility:**
 
@@ -652,6 +653,14 @@ All error states use conversational, non-technical language with actionable next
 - Multiple transactions in-flight allowed; each maintains separate state until explicitly saved.
 
 ### Success and Confirmation Patterns
+
+**Account Scope Clarity Pattern (Story 3.9):**
+
+- Default dashboard and ledger scope label is always visible as "All accounts" when no filter is applied.
+- Account filter control is always discoverable from ledger/dashboard headers and keyboard reachable.
+- When a filter is applied, active scope label must switch to "Account: <bank> <account>" and remain visible in both baseline and insight regions.
+- Scope transitions (all-accounts <-> filtered account) must refresh baseline/history/insights deterministically and complete within the existing dashboard refresh target.
+- No hidden scope behavior is allowed; users must never infer scope from data shape alone.
 
 **Save Confirmation Pattern (Journey 1 - Explicit Save Trigger):**
 

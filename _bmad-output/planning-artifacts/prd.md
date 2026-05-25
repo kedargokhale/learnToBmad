@@ -156,6 +156,8 @@ This is a greenfield `web_app` in the `fintech` domain with `high` complexity. T
 - Copy-paste-first ingestion with instant value on first use.
 - Strict critical-field validation that blocks unsafe saves.
 - Account format mismatch detection with guided resolution.
+- Baseline, history, and insight views use all-accounts scope by default when multiple accounts exist.
+- Any account-filtered view must show explicit active scope labeling (`All accounts` or `Account: <bank> <account>`).
 - Local-first privacy boundary enforced across all flows.
 - Immediate insight rendering after first successful capture.
 - Owner-operator controls for local rule/category maintenance and quality checks.
@@ -175,6 +177,9 @@ This is a greenfield `web_app` in the `fintech` domain with `high` complexity. T
 
 - The system must block transaction save when any critical field is missing.
 - Account format mismatch must trigger a guided resolution flow before any ledger write.
+- Baseline/history/insight data must default to all-accounts aggregation and support explicit per-account filtering.
+- Any baseline/history/insight response must carry scope metadata (`all-accounts` or `account:<id>`) to prevent ambiguous UI rendering.
+- Primary capture action text must be `Save` (not process-oriented variants).
 - Parsing should be deterministic for supported patterns and expose confidence signals when ambiguity exists.
 - Exported backup files must support encryption at rest.
 - Import and export operations must preserve data integrity with zero silent mutation.
@@ -387,7 +392,7 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 - FR2: System can uniquely identify accounts using a composite key of bank name and account number.
 - FR3: During new-account creation triggered by a qualifying save, users can set an opening balance before persistence.
 - FR4: System maintains a going-forward-only transaction ledger.
-- FR5: Users can view current account balance and transaction history.
+- FR5: Users can view account balance and transaction history with all-accounts scope by default, plus optional per-account filtering with explicit scope labels.
 
 ### Transaction Capture & Parsing
 
@@ -417,9 +422,9 @@ The strategy prioritizes completeness, correctness, and trust over feature bread
 - FR20: System displays a category dominance view showing expense breakdown by category.
 - FR21: System displays a merchant focus view showing top merchants with frequency and amount.
 - FR22: System displays a trend alert view showing significant spending changes compared to a moving-average baseline.
-- FR23: System displays a running balance trend line over time.
+- FR23: System displays a running balance trend line over time for the active scope (all-accounts by default, or selected account when filtered).
 - FR24: Users can select dashboard time windows using standard preset options.
-- FR25: Dashboard views update after new transactions are saved.
+- FR25: Dashboard views update after new transactions are saved and after scope changes between all-accounts and selected-account modes.
 
 ### Data Export, Import & Portability
 

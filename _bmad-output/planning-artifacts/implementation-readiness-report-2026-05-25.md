@@ -353,3 +353,163 @@ This assessment identified 5 issues across 2 categories (UX alignment consistenc
 
 - Assessment date: 2026-05-25
 - Assessor: GitHub Copilot (GPT-5.3-Codex)
+
+---
+
+## Continuation Addendum (Story 3.9 Focus)
+
+### Scope of This Continuation Run
+
+- Trigger: User-selected continuation (`C`) after Step 1 discovery.
+- Focus: Story 3.9 readiness and cross-artifact alignment for multi-account baseline scope.
+- Included supplemental artifact:
+	- _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-25.md
+
+## PRD Analysis (Revalidated)
+
+### Functional Requirements
+
+Revalidated complete PRD functional requirement set with no additions detected in PRD text:
+
+- FR1 through FR40 present and explicitly enumerated in the PRD.
+- Total FRs: 40
+
+### Non-Functional Requirements
+
+Revalidated complete PRD non-functional requirement set with no additions detected in PRD text:
+
+- NFR1 through NFR20 present and explicitly enumerated in the PRD.
+- Total NFRs: 20
+
+### Additional Requirements / Constraints (Revalidated)
+
+- Local-first privacy invariant and no automatic external transmission.
+- Deterministic parse-validate-save-refresh behavior.
+- Validate-first and atomic import semantics.
+- Desktop-first packaged runtime behavior constraints (Windows/WebView2).
+
+### PRD Completeness Assessment (Story 3.9 Context)
+
+- PRD is internally complete for FR1-FR40 and NFR1-NFR20.
+- PRD does not yet explicitly encode the newly proposed all-accounts-by-default baseline/history semantics captured in sprint change proposal 2026-05-25.
+- Outcome: PRD is complete for current baseline scope, but has a gap versus newly approved course-correction intent for Story 3.9.
+
+## Epic Coverage Validation (Story 3.9 Context)
+
+### Coverage Matrix Summary
+
+- Total PRD FRs: 40
+- FRs covered in epics: 40
+- Coverage percentage: 100%
+- No PRD FRs missing from the epics FR coverage map.
+
+### Story 3.9 and 3.10 Validation
+
+- Epic 3 now includes:
+	- Story 3.9: Multi-Account Baseline Scope and Account Switcher
+	- Story 3.10: Capture Surface Declutter and Primary Action Simplification
+- These additions align to the identified gap and are directionally correct.
+
+### Delta Gap (Cross-Artifact)
+
+- Epics include Story 3.9 scope intent, but PRD/Architecture/UX are not yet fully harmonized to the same explicit contract language for:
+	- all-accounts default scope,
+	- explicit filter scope labeling,
+	- response scope metadata expectations.
+
+## UX Alignment Assessment (Story 3.9 Context)
+
+### UX Document Status
+
+- Found: _bmad-output/planning-artifacts/ux-design-specification.md
+
+### Alignment Findings
+
+- UX principles already support concise action labels and outcome-oriented copy, which supports Story 3.10 intent.
+- Sprint change proposal explicitly requires `Save` as primary action text and reduced duplicate explanatory copy.
+- Account scope clarity pattern (all-accounts default + explicit filter context) is proposed in change proposal but not yet consistently codified as a fully testable UX contract across planning artifacts.
+
+### Warnings
+
+- Risk of implementation drift remains if account scope language stays proposal-only and is not normalized into PRD/Architecture/UX as canonical requirements.
+
+## Epic Quality Review (Story 3.9 Context)
+
+### Structural Quality
+
+- Story 3.9 and 3.10 are user-value stories and fit Epic 3 scope.
+- No forward dependency introduced by these story additions.
+
+### Quality Risks
+
+- Story 3.9 ACs are strong directionally, but remain partially non-measurable (for example, "clearly labeled" and "refreshes deterministically" without explicit measurable assertions).
+- Cross-artifact contract detail (scope metadata and exact filter-label behavior) is currently stronger in sprint change proposal than in canonical planning artifacts.
+
+### Recommended Tightening
+
+1. Add explicit expected scope labels and examples in Story 3.9 ACs.
+2. Add deterministic refresh and data-source assertions for all-accounts versus filtered mode.
+3. Add explicit UI copy acceptance assertions for Story 3.10 (`Save` label and reduced duplicate guidance copy).
+
+## Summary and Recommendations (Continuation)
+
+### Overall Readiness Status
+
+NEEDS WORK
+
+### Critical Issues Requiring Immediate Action
+
+1. Cross-artifact harmonization gap for multi-account baseline scope remains between epics and canonical PRD/Architecture/UX language.
+2. Story 3.9/3.10 acceptance criteria still require measurable tightening for deterministic verification.
+
+### Recommended Next Steps
+
+1. Normalize Story 3.9 account-scope rules into PRD, Architecture, and UX specs using one canonical wording set.
+2. Add measurable ACs for Story 3.9 and 3.10 (scope label text, refresh determinism checks, and primary action copy assertions).
+3. Add regression test definitions for all-accounts default, account filter switching, and `Save` label consistency.
+
+### Final Note
+
+This continuation run confirms full FR coverage for current PRD scope and validates the value of Story 3.9/3.10 additions, while identifying contract-level alignment work needed before implementation is considered fully ready.
+
+---
+
+## Remediation Update (Post-Assessment)
+
+### Status
+
+COMPLETED
+
+### Completed Remediation Actions
+
+1. Canonical account-scope wording normalized into PRD:
+	- Added all-accounts default behavior for baseline/history/insight surfaces.
+	- Added explicit filter-label expectations.
+	- Added response scope metadata requirement (`all-accounts` or `account:<id>`).
+	- Added primary capture action wording requirement (`Save`).
+
+2. Architecture command contracts updated:
+	- Added Story 3.9 ledger scope command contract section.
+	- Added default all-accounts behavior with optional `accountId` filtering for baseline and insights.
+	- Added deterministic `meta.scope` response contract.
+
+3. UX contract updated:
+	- Tightened save-label guidance to explicitly disallow process-oriented variants including `Run save validation`.
+	- Added account scope clarity pattern (visible default scope label, explicit filter state label, deterministic scope transitions).
+	- Added declutter rule to prevent repeated instructional text near primary actions.
+
+4. Story acceptance criteria tightened in Epic 3:
+	- Story 3.9 updated with measurable assertions for scope labels, scope metadata alignment, and deterministic scope-switch refresh behavior.
+	- Story 3.10 updated with measurable assertions for exact `Save` label text, exclusion of process-oriented alternatives, and concise guidance-line constraints.
+
+### Artifact Update Record
+
+- _bmad-output/planning-artifacts/prd.md
+- _bmad-output/planning-artifacts/architecture.md
+- _bmad-output/planning-artifacts/ux-design-specification.md
+- _bmad-output/planning-artifacts/epics.md
+
+### Readiness Delta
+
+- Previously open issues addressed: cross-artifact harmonization for Story 3.9 and measurable AC tightening for Story 3.9/3.10.
+- Residual risk: implementation and regression testing must now verify the updated contracts in code and test suites.
