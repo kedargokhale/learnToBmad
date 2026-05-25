@@ -68,6 +68,26 @@ export type LedgerRunningBalanceData = {
   points: RunningBalancePointData[];
 };
 
+export type LedgerInsightCardKind = "category" | "merchant" | "trend";
+
+export type LedgerInsightCardEmptyStateData = {
+  title: string;
+  detail: string;
+  nextAction: string;
+};
+
+export type LedgerInsightSummaryCardData = {
+  kind: LedgerInsightCardKind;
+  title: string;
+  headline: string;
+  metricLabel: string;
+  metricValue: string;
+  supportingText: string;
+  badgeLabel?: string;
+  isEmpty: boolean;
+  emptyState: LedgerInsightCardEmptyStateData;
+};
+
 export type LedgerBaselineData = {
   account: LedgerAccountData | null;
   entries: LedgerEntryData[];
@@ -75,6 +95,7 @@ export type LedgerBaselineData = {
   merchantInsights?: LedgerMerchantInsightData[];
   trendAlert: LedgerTrendAlertData;
   runningBalance: LedgerRunningBalanceData;
+  insightSummary?: LedgerInsightSummaryCardData[];
   ordering: string;
 };
 

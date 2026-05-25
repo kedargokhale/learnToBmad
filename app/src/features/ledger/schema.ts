@@ -69,6 +69,26 @@ export const runningBalanceSchema = z.object({
   points: z.array(runningBalancePointSchema).default([]),
 });
 
+export const insightSummaryCardKindSchema = z.enum(["category", "merchant", "trend"]);
+
+export const insightSummaryCardEmptyStateSchema = z.object({
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  nextAction: z.string().min(1),
+});
+
+export const insightSummaryCardSchema = z.object({
+  kind: insightSummaryCardKindSchema,
+  title: z.string().min(1),
+  headline: z.string().min(1),
+  metricLabel: z.string().min(1),
+  metricValue: z.string().min(1),
+  supportingText: z.string().min(1),
+  badgeLabel: z.string().min(1).optional(),
+  isEmpty: z.boolean(),
+  emptyState: insightSummaryCardEmptyStateSchema,
+});
+
 export const ledgerBaselineSchema = z.object({
   account: ledgerAccountSchema.nullable(),
   entries: z.array(ledgerEntrySchema),
@@ -76,6 +96,7 @@ export const ledgerBaselineSchema = z.object({
   merchantInsights: z.array(merchantInsightSchema).default([]),
   trendAlert: trendAlertSchema,
   runningBalance: runningBalanceSchema,
+  insightSummary: z.array(insightSummaryCardSchema).default([]),
   ordering: z.string().min(1),
 });
 

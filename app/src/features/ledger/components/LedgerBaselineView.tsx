@@ -7,7 +7,6 @@ import {
 } from "../../categorization/schema";
 import { InsightSummary } from "../../dashboard/components/InsightSummary";
 import { RunningBalanceView } from "../../dashboard/components/RunningBalanceView";
-import { TrendAlertCard } from "../../dashboard/components/TrendAlertCard";
 
 type LedgerBaselineViewProps = {
   baseline: LedgerBaselineData;
@@ -17,10 +16,8 @@ type LedgerBaselineViewProps = {
 
 export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: LedgerBaselineViewProps) {
   const account = baseline.account;
-  const categoryInsights = baseline.categoryInsights ?? [];
-  const merchantInsights = baseline.merchantInsights ?? [];
-  const trendAlert = baseline.trendAlert;
   const runningBalance = baseline.runningBalance;
+  const insightSummary = baseline.insightSummary ?? [];
   const [draftCategories, setDraftCategories] = useState<Record<number, CategoryCode>>({});
   const [updatingTransactionId, setUpdatingTransactionId] = useState<number | null>(null);
 
@@ -64,10 +61,9 @@ export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: Le
       </div>
 
       <div className="ledger-card">
-        <InsightSummary categoryInsights={categoryInsights} merchantInsights={merchantInsights} />
+        <InsightSummary cards={insightSummary} />
 
-        <section className="insight-summary" aria-label="Trend and balance insights">
-          <TrendAlertCard trendAlert={trendAlert} />
+        <section className="insight-summary" aria-label="Running balance insights">
           <RunningBalanceView runningBalance={runningBalance} />
         </section>
 

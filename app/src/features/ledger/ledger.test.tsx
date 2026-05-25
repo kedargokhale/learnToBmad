@@ -34,6 +34,51 @@ const baselineDefaults = {
     windowPreset: "30d",
     points: [],
   },
+  insightSummary: [
+    {
+      kind: "category",
+      title: "Category story",
+      headline: "No category signal available",
+      metricLabel: "Top category spend",
+      metricValue: "INR 0.00",
+      supportingText: "Debit category concentration appears here after saves are committed.",
+      isEmpty: true,
+      emptyState: {
+        title: "No categorized transactions yet",
+        detail: "There are no persisted debit transactions to summarize by category.",
+        nextAction: "Save more categorized transactions to unlock this insight.",
+      },
+    },
+    {
+      kind: "merchant",
+      title: "Merchant story",
+      headline: "No merchant signal available",
+      metricLabel: "Top merchant spend",
+      metricValue: "INR 0.00",
+      supportingText: "Merchant concentration appears here after persisted debit activity.",
+      isEmpty: true,
+      emptyState: {
+        title: "No merchant activity yet",
+        detail: "There are no eligible merchant rows in persisted debit history.",
+        nextAction: "Save additional transactions to build merchant insights.",
+      },
+    },
+    {
+      kind: "trend",
+      title: "Trend story",
+      headline: "No trend signal available",
+      metricLabel: "Window delta",
+      metricValue: "0.0%",
+      supportingText: "Trend movement appears after two comparable debit windows are available.",
+      badgeLabel: "Stable",
+      isEmpty: true,
+      emptyState: {
+        title: "Not enough history for a trend",
+        detail: "A deterministic trend requires persisted debit data across baseline and current windows.",
+        nextAction: "Save more categorized transactions in this preset window.",
+      },
+    },
+  ],
 };
 
 describe("AccountSetupScreen", () => {
@@ -230,14 +275,48 @@ describe("Ledger baseline app flow", () => {
             lastSeenDate: "2026-05-03",
           },
         ],
+        insightSummary: [
+          {
+            kind: "category",
+            title: "Category story",
+            headline: "Groceries",
+            metricLabel: "Top category spend",
+            metricValue: "INR 82.00",
+            supportingText: "3 transactions account for 62.1% of persisted debit spend.",
+            badgeLabel: "62.1% share",
+            isEmpty: false,
+            emptyState: baselineDefaults.insightSummary[0].emptyState,
+          },
+          {
+            kind: "merchant",
+            title: "Merchant story",
+            headline: "BigBazaar",
+            metricLabel: "Top merchant spend",
+            metricValue: "INR 82.00",
+            supportingText: "3 transactions. Last seen on 2026-05-03.",
+            isEmpty: false,
+            emptyState: baselineDefaults.insightSummary[1].emptyState,
+          },
+          {
+            kind: "trend",
+            title: "Trend story",
+            headline: "Not enough persisted debit history to compare trend windows.",
+            metricLabel: "Window delta",
+            metricValue: "0.0%",
+            supportingText: "Current INR 0.00 vs baseline INR 0.00 for preset 30d.",
+            badgeLabel: "Stable",
+            isEmpty: true,
+            emptyState: baselineDefaults.insightSummary[2].emptyState,
+          },
+        ],
         ordering: "created_at_desc_id_desc",
       },
     });
 
     render(<App />);
 
-    expect(await screen.findByText(/category dominance/i)).toBeInTheDocument();
-    expect(screen.getByText(/merchant focus/i)).toBeInTheDocument();
+    expect(await screen.findByText(/category story/i)).toBeInTheDocument();
+    expect(screen.getByText(/merchant story/i)).toBeInTheDocument();
     expect(screen.getByText(/groceries/i)).toBeInTheDocument();
     expect(screen.getByText(/bigbazaar/i)).toBeInTheDocument();
   });
@@ -284,13 +363,28 @@ describe("Ledger baseline app flow", () => {
             },
           ],
         },
+        insightSummary: [
+          baselineDefaults.insightSummary[0],
+          baselineDefaults.insightSummary[1],
+          {
+            kind: "trend",
+            title: "Trend story",
+            headline: "Current window spend is 50.0% above baseline.",
+            metricLabel: "Window delta",
+            metricValue: "50.0%",
+            supportingText: "Current INR 90.00 vs baseline INR 60.00 for preset 30d.",
+            badgeLabel: "Alert",
+            isEmpty: false,
+            emptyState: baselineDefaults.insightSummary[2].emptyState,
+          },
+        ],
         ordering: "created_at_desc_id_desc",
       },
     });
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: /trend signal/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /trend story/i })).toBeInTheDocument();
     expect(screen.getByText(/current window spend is 50.0% above baseline/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /running balance/i })).toBeInTheDocument();
     expect(screen.getByText(/opening balance/i)).toBeInTheDocument();
@@ -328,7 +422,7 @@ describe("Ledger baseline app flow", () => {
 
     render(<App />);
 
-    expect(await screen.findByText(/not enough persisted debit history to compare trend windows/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not enough history for a trend/i)).toBeInTheDocument();
     expect(screen.getByText(/no running-balance points available for this preset window yet/i)).toBeInTheDocument();
   });
 
@@ -352,8 +446,109 @@ describe("Ledger baseline app flow", () => {
 
     render(<App />);
 
-    expect(await screen.findByText(/no persisted debit transactions in this period yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/no merchant activity available for this period yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no categorized transactions yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no merchant activity yet/i)).toBeInTheDocument();
+  });
+
+  it("renders exactly three summary story cards in deterministic order", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        ...baselineDefaults,
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    const cards = await screen.findAllByRole("article");
+    expect(cards.slice(0, 3).map((card) => card.getAttribute("aria-label"))).toEqual([
+      "Category story",
+      "Merchant story",
+      "Trend story",
+    ]);
+    expect(screen.getByText(/save more categorized transactions to unlock this insight/i)).toBeInTheDocument();
+  });
+
+  it("fills missing insight kinds with deterministic fallback cards", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        ...baselineDefaults,
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        insightSummary: [
+          {
+            kind: "category",
+            title: "Category story",
+            headline: "Groceries",
+            metricLabel: "Top category spend",
+            metricValue: "INR 82.00",
+            supportingText: "3 transactions account for 62.1% of persisted debit spend.",
+            badgeLabel: "62.1% share",
+            isEmpty: false,
+            emptyState: baselineDefaults.insightSummary[0].emptyState,
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    const cards = await screen.findAllByRole("article");
+    expect(cards.slice(0, 3).map((card) => card.getAttribute("aria-label"))).toEqual([
+      "Category story",
+      "Merchant story",
+      "Trend story",
+    ]);
+    expect(screen.getByText(/no merchant activity yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/not enough history for a trend/i)).toBeInTheDocument();
+  });
+
+  it("keeps summary cards rendered after narrow viewport resize", async () => {
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        ...baselineDefaults,
+        account: {
+          id: 1,
+          bankName: "HDFC",
+          accountNumber: "1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    render(<App />);
+
+    Object.defineProperty(window, "innerWidth", {
+      value: 760,
+      writable: true,
+      configurable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+
+    const cards = await screen.findAllByRole("article");
+    expect(cards.slice(0, 3).map((card) => card.getAttribute("aria-label"))).toEqual([
+      "Category story",
+      "Merchant story",
+      "Trend story",
+    ]);
   });
 
   it("does not show account setup before the first save-triggered new-account flow", async () => {
@@ -659,6 +854,30 @@ describe("Ledger baseline app flow", () => {
               lastSeenDate: "2026-05-01",
             },
           ],
+          insightSummary: [
+            {
+              kind: "category",
+              title: "Category story",
+              headline: "Groceries",
+              metricLabel: "Top category spend",
+              metricValue: "INR 12.00",
+              supportingText: "1 transactions account for 100.0% of persisted debit spend.",
+              badgeLabel: "100.0% share",
+              isEmpty: false,
+              emptyState: baselineDefaults.insightSummary[0].emptyState,
+            },
+            {
+              kind: "merchant",
+              title: "Merchant story",
+              headline: "OldMerchant",
+              metricLabel: "Top merchant spend",
+              metricValue: "INR 12.00",
+              supportingText: "1 transactions. Last seen on 2026-05-01.",
+              isEmpty: false,
+              emptyState: baselineDefaults.insightSummary[1].emptyState,
+            },
+            baselineDefaults.insightSummary[2],
+          ],
           ordering: "created_at_desc_id_desc",
         },
       })
@@ -698,6 +917,30 @@ describe("Ledger baseline app flow", () => {
               transactionCount: 1,
               lastSeenDate: "2026-05-02",
             },
+          ],
+          insightSummary: [
+            {
+              kind: "category",
+              title: "Category story",
+              headline: "Shopping",
+              metricLabel: "Top category spend",
+              metricValue: "INR 12.50",
+              supportingText: "1 transactions account for 100.0% of persisted debit spend.",
+              badgeLabel: "100.0% share",
+              isEmpty: false,
+              emptyState: baselineDefaults.insightSummary[0].emptyState,
+            },
+            {
+              kind: "merchant",
+              title: "Merchant story",
+              headline: "CityMall",
+              metricLabel: "Top merchant spend",
+              metricValue: "INR 12.50",
+              supportingText: "1 transactions. Last seen on 2026-05-02.",
+              isEmpty: false,
+              emptyState: baselineDefaults.insightSummary[1].emptyState,
+            },
+            baselineDefaults.insightSummary[2],
           ],
           ordering: "created_at_desc_id_desc",
         },
@@ -750,7 +993,7 @@ describe("Ledger baseline app flow", () => {
     await waitFor(() => {
       expect(getLedgerBaseline).toHaveBeenCalled();
     });
-    const merchantCard = await screen.findByRole("article", { name: /merchant focus/i });
+    const merchantCard = await screen.findByRole("article", { name: /merchant story/i });
     expect(within(merchantCard).getByText(/citymall/i)).toBeInTheDocument();
     expect(screen.queryByText(/oldmerchant/i)).not.toBeInTheDocument();
   });
