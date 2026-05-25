@@ -1,6 +1,6 @@
 # Story 3.5: Capture Surface and Readiness State Components
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -16,21 +16,29 @@ so that I can move from paste to safe save with minimal confusion.
 
 ## Tasks / Subtasks
 
-- [ ] Align capture-surface state model with explicit readiness semantics (AC: 1, 2, 3)
-  - [ ] Keep a single deterministic mapping from parse/save outcomes to UI readiness state labels.
-  - [ ] Preserve current lifecycle states (`idle`, `validating`, `blocked`, `persisting`, `success`, `failed`) while adding clearer semantic presentation.
-- [ ] Implement readiness-state communication components (AC: 1, 2)
-  - [ ] Ensure TransactionInput and ReadinessStatus are always visible in the capture region once runtime is valid.
-  - [ ] Add or refine reusable state indicators for blocked, needs-review, ready, and duplicate flows with icon + label + text (non-color-only communication).
-- [ ] Keep correction and decision workflows integrated with readiness state (AC: 2, 3)
-  - [ ] Ensure CorrectionPanel opens only for blocked fields and closes without state drift.
-  - [ ] Preserve account-mismatch and duplicate-decision controls as gating decisions that clearly affect save availability.
-- [ ] Enforce save availability consistency with current validation result (AC: 3)
-  - [ ] Save action enablement must derive from the latest blocked-field and decision-gate state only.
-  - [ ] Returning focus to capture must not reset or desynchronize readiness state.
-- [ ] Add regression and accessibility coverage (AC: 1, 2, 3)
-  - [ ] Expand tests for readiness rendering and save-enable/disable transitions after parse, correction, and decision changes.
-  - [ ] Add assertions for non-color cues and keyboard flow continuity (Tab/Enter/Escape) across capture state transitions.
+- [x] Align capture-surface state model with explicit readiness semantics (AC: 1, 2, 3)
+  - [x] Keep a single deterministic mapping from parse/save outcomes to UI readiness state labels.
+  - [x] Preserve current lifecycle states (`idle`, `validating`, `blocked`, `persisting`, `success`, `failed`) while adding clearer semantic presentation.
+- [x] Implement readiness-state communication components (AC: 1, 2)
+  - [x] Ensure TransactionInput and ReadinessStatus are always visible in the capture region once runtime is valid.
+  - [x] Add or refine reusable state indicators for blocked, needs-review, ready, and duplicate flows with icon + label + text (non-color-only communication).
+- [x] Keep correction and decision workflows integrated with readiness state (AC: 2, 3)
+  - [x] Ensure CorrectionPanel opens only for blocked fields and closes without state drift.
+  - [x] Preserve account-mismatch and duplicate-decision controls as gating decisions that clearly affect save availability.
+- [x] Enforce save availability consistency with current validation result (AC: 3)
+  - [x] Save action enablement must derive from the latest blocked-field and decision-gate state only.
+  - [x] Returning focus to capture must not reset or desynchronize readiness state.
+- [x] Add regression and accessibility coverage (AC: 1, 2, 3)
+  - [x] Expand tests for readiness rendering and save-enable/disable transitions after parse, correction, and decision changes.
+  - [x] Add assertions for non-color cues and keyboard flow continuity (Tab/Enter/Escape) across capture state transitions.
+
+### Review Findings
+
+- [x] [Review][Patch] Duplicate decision gating is inconsistent between save-disable logic and semantic state [app/src/App.tsx:128]
+- [x] [Review][Patch] Account-mismatch gating criteria differ between App and ReadinessStatus, causing state/action desync [app/src/App.tsx:125]
+- [x] [Review][Patch] ReadinessStatus can remain blocked after mismatch resolution is selected because resolution value is ignored in semantic derivation [app/src/features/capture/components/ReadinessStatus.tsx:98]
+- [x] [Review][Patch] Failed save lifecycle is mapped to blocked semantic state, which can misdirect remediation [app/src/features/capture/schema.ts:127]
+- [x] [Review][Patch] Mismatch resolver can disappear while save remains blocked when save-gate mismatch payload conflicts with preflight mismatch signal [app/src/features/capture/components/ReadinessStatus.tsx:96]
 
 ## Dev Notes
 
@@ -203,8 +211,8 @@ Implication: story 3.5 must preserve corrected onboarding behavior while improvi
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: done
+- Completion note: Code review patch findings applied; readiness gating and semantic-state mapping are now aligned with save availability.
 
 ## Dev Agent Record
 
@@ -217,13 +225,31 @@ GPT-5.3-Codex
 - Workflow configuration resolved through `_bmad/scripts/resolve_customization.py`.
 - Sprint status, planning artifacts, UX and architecture documents, prior story artifacts, and current capture source files analyzed.
 - Git history and latest package intelligence captured on 2026-05-20.
+- Implemented deterministic semantic-state mapping in capture schema and wired it into readiness rendering.
+- Extended capture regression suite with duplicate-flagged, blocked, and keyboard/focus continuity assertions.
+- Executed `pnpm test` successfully (41/41 tests passed).
 
 ### Completion Notes List
 
 - Story 3.5 context is aligned to current code reality (capture module-centric implementation; no non-existent CapturePanel dependency).
 - Readiness-state semantics and save-enable consistency are defined as explicit non-regression requirements.
 - Existing onboarding correction and deterministic save behavior are preserved as hard guardrails.
+- Added explicit capture semantic labels and non-color cues for `ready`, `needs-review`, `blocked`, and `duplicate-flagged` states.
+- Save gating now respects current decision gates, including preflight account-mismatch resolution requirements.
+- Added regression coverage for semantic-state rendering and keyboard continuity (`Escape` close, `Enter` apply, focus-return save stability).
+- `pnpm build` remains blocked by pre-existing type gaps in `app/src/features/ledger/ledger.test.tsx` fixtures (`trendAlert` and `runningBalance` missing).
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-5-capture-surface-and-readiness-state-components.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/App.tsx
+- app/src/App.css
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/features/capture/schema.ts
+- app/src/features/capture/capture.test.tsx
+
+## Change Log
+
+- 2026-05-25: Implemented Story 3.5 capture semantic-state communication and regression coverage; set story to review.
+- 2026-05-25: Applied code-review patch findings and closed Story 3.5 as done.

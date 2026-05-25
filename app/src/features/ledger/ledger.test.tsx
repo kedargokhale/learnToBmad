@@ -7,7 +7,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import App from "../../App";
 import { attemptTransactionSave, parseTransactionMessage } from "../capture/service";
 import { AccountSetupScreen } from "./components/AccountSetupScreen";
-import { getLedgerBaseline, updateCaptureTransactionCategory } from "./service";
+import { createLedgerAccount, getLedgerBaseline, updateCaptureTransactionCategory } from "./service";
 
 vi.mock("./service", () => ({
   createLedgerAccount: vi.fn(),
@@ -19,6 +19,22 @@ vi.mock("../capture/service", () => ({
   parseTransactionMessage: vi.fn(),
   attemptTransactionSave: vi.fn(),
 }));
+
+const baselineDefaults = {
+  trendAlert: {
+    windowPreset: "30d",
+    currentSpendMinor: 0,
+    baselineSpendMinor: 0,
+    deltaPercent: 0,
+    thresholdPercent: 20,
+    isAlert: false,
+    reason: "Not enough persisted debit history to compare trend windows.",
+  },
+  runningBalance: {
+    windowPreset: "30d",
+    points: [],
+  },
+};
 
 describe("AccountSetupScreen", () => {
   it("submits a valid account setup request", async () => {
@@ -121,6 +137,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: null,
         entries: [],
         ordering: "created_at_desc_id_desc",
@@ -137,6 +154,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC",
@@ -181,6 +199,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC",
@@ -227,6 +246,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC",
@@ -316,6 +336,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC",
@@ -339,6 +360,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: null,
         entries: [],
         ordering: "created_at_desc_id_desc",
@@ -357,6 +379,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: null,
         entries: [],
         ordering: "created_at_desc_id_desc",
@@ -402,6 +425,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC Bank",
@@ -471,6 +495,135 @@ describe("Ledger baseline app flow", () => {
     expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
   });
 
+  it("opens prefilled account setup when parsed account is chosen but not yet in the ledger", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline).mockReset();
+    vi.mocked(parseTransactionMessage).mockReset();
+    vi.mocked(attemptTransactionSave).mockReset();
+    vi.mocked(createLedgerAccount).mockReset();
+
+    vi.mocked(getLedgerBaseline).mockResolvedValue({
+      ok: true,
+      data: {
+        ...baselineDefaults,
+        account: {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 125050,
+        },
+        entries: [
+          {
+            id: 9,
+            entryKind: "opening_balance",
+            amountMinor: 125050,
+            createdAt: "2026-05-02 10:00:00",
+          },
+        ],
+        ordering: "created_at_desc_id_desc",
+      },
+    });
+
+    vi.mocked(parseTransactionMessage).mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "Sent Rs.100.00 From HDFC Bank A/C *1234 To Axis Bank On 2026-05-13",
+        normalizedText: "Sent Rs.100.00 From HDFC Bank A/C *1234 To Axis Bank On 2026-05-13",
+        amountMinor: 10000,
+        direction: "debit",
+        transactionDate: "2026-05-13",
+        bankName: "HDFC Bank",
+        accountNumber: "*1234",
+        merchantOrPayee: "Axis",
+        suggestedCategory: "transfer",
+        finalCategory: "transfer",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    vi.mocked(attemptTransactionSave)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "The parsed account was not found in local ledger accounts. Create or select that account before saving.",
+          hint: "Create or select the parsed account in the local ledger, then retry save.",
+          details: {
+            blockedFields: [
+              {
+                field: "accountNumber",
+                reason: "ambiguous",
+                hint: "Parsed account is not yet available in the local ledger.",
+              },
+            ],
+            nextAction: "Create/select the parsed account and retry save.",
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          validationState: "passed",
+          acceptedForWrite: false,
+          checkedFields: [
+            "amountMinor",
+            "direction",
+            "transactionDate",
+            "bankName",
+            "accountNumber",
+            "merchantOrPayee",
+          ],
+          message: "Validation passed.",
+        },
+      });
+
+    vi.mocked(createLedgerAccount).mockResolvedValue({
+      ok: true,
+      data: {
+        accountId: 2,
+        bankName: "HDFC Bank",
+        accountNumber: "*1234",
+        openingBalanceMinor: 0,
+        openingEntryId: 10,
+      },
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByLabelText(/bank message/i));
+    await user.paste("Sent Rs.100.00 From HDFC Bank A/C *1234 To Axis Bank On 2026-05-13");
+    await user.click(await screen.findByLabelText(/treat parsed account as intended and continue validation/i));
+    await user.click(screen.getByRole("button", { name: /run save validation/i }));
+
+    expect(await screen.findByRole("heading", { name: /account confirmation/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/bank name/i)).toHaveValue("HDFC Bank");
+    expect(screen.getByLabelText(/account number/i)).toHaveValue("*1234");
+
+    await user.type(screen.getByLabelText(/opening balance/i), "0.00");
+    await user.click(screen.getByRole("button", { name: /create account and opening balance/i }));
+
+    await waitFor(() => {
+      expect(createLedgerAccount).toHaveBeenCalledWith({
+        bankName: "HDFC Bank",
+        accountNumber: "*1234",
+        openingBalanceMinor: 0,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /run save validation/i }));
+
+    await waitFor(() => {
+      expect(attemptTransactionSave).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText(/save persisted: passed/i)).toBeInTheDocument();
+  });
+
   it("refreshes insight cards after committed save baseline refresh", async () => {
     const user = userEvent.setup();
 
@@ -482,6 +635,7 @@ describe("Ledger baseline app flow", () => {
       .mockResolvedValueOnce({
         ok: true,
         data: {
+          ...baselineDefaults,
           account: {
             id: 1,
             bankName: "HDFC Bank",
@@ -511,6 +665,7 @@ describe("Ledger baseline app flow", () => {
       .mockResolvedValue({
         ok: true,
         data: {
+          ...baselineDefaults,
           account: {
             id: 1,
             bankName: "HDFC Bank",
@@ -606,6 +761,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC Bank",
@@ -657,6 +813,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC Bank",
@@ -706,6 +863,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC Bank",
@@ -755,6 +913,7 @@ describe("Ledger baseline app flow", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: {
           id: 1,
           bankName: "HDFC Bank",
@@ -815,6 +974,7 @@ describe("Desktop runtime guard", () => {
     vi.mocked(getLedgerBaseline).mockResolvedValue({
       ok: true,
       data: {
+        ...baselineDefaults,
         account: null,
         entries: [],
         ordering: "created_at_desc_id_desc",

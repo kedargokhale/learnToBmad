@@ -86,6 +86,7 @@ export type AccountMismatchResolution = z.infer<typeof accountMismatchResolution
 export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;
 export type SaveLifecycleState = z.infer<typeof saveLifecycleStateSchema>;
 export type SaveGateDecisionDetails = z.infer<typeof saveGateDecisionDetailsSchema>;
+export type CaptureSemanticState = "ready" | "needs-review" | "blocked" | "duplicate-flagged";
 
 export function resolveCategorySource(
   suggestedCategory: string,
@@ -109,6 +110,52 @@ export function computeReadinessLabel(readinessState: ParsePreviewViewModel["rea
       return "Ready for validation";
     case "needs-review":
       return "Needs review before save";
+  }
+}
+
+export function deriveCaptureSemanticState(input: {
+  readinessState: ParsePreviewViewModel["readinessState"];
+  requiresMismatchResolution: boolean;
+  requiresDuplicateDecision: boolean;
+}): CaptureSemanticState {
+  if (input.requiresDuplicateDecision) {
+    return "duplicate-flagged";
+  }
+
+  if (input.requiresMismatchResolution) {
+    return "blocked";
+  }
+
+  if (input.readinessState === "needs-review") {
+    return "needs-review";
+  }
+
+  return "ready";
+}
+
+export function getCaptureSemanticStateLabel(state: CaptureSemanticState): string {
+  switch (state) {
+    case "ready":
+      return "Ready for validation";
+    case "needs-review":
+      return "Needs review before save";
+    case "blocked":
+      return "Blocked by validation gates";
+    case "duplicate-flagged":
+      return "Duplicate flagged";
+  }
+}
+
+export function getCaptureSemanticStateCue(state: CaptureSemanticState): string {
+  switch (state) {
+    case "ready":
+      return "All critical fields detected and decision gates are clear.";
+    case "needs-review":
+      return "One or more critical fields need review before save validation.";
+    case "blocked":
+      return "Resolve blocked fields or account mismatch decisions to continue.";
+    case "duplicate-flagged":
+      return "Explicit duplicate decision required before save validation can continue.";
   }
 }
 

@@ -994,6 +994,161 @@ describe("Capture parse UX", () => {
     expect(payload.parsedPayload.finalCategory).toBe("shopping");
     expect(payload.parsedPayload.categorySource).toBe("user-override");
   });
+
+  it("shows duplicate-flagged semantic state while duplicate decision is unresolved", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "duplicate semantic",
+        normalizedText: "duplicate semantic",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    const saveAttempt = vi.fn().mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Critical fields are missing or ambiguous. Save is blocked.",
+        hint: "Review each field and re-parse or correct values before saving.",
+        details: {
+          blockedFields: [],
+          accountMismatch: {
+            detected: false,
+            requiresResolution: false,
+            selectedBankName: "HDFC Bank",
+            selectedAccountNumber: "XX1234",
+          },
+          duplicateCandidate: {
+            detected: true,
+            requiresDecision: true,
+            reason: "Potential duplicate",
+            fingerprint: "125050|debit|2026-05-01|XX1234|BIGBAZAAR",
+          },
+        },
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("duplicate semantic");
+
+    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+
+    expect(await screen.findByText(/state: duplicate flagged/i)).toBeInTheDocument();
+    expect(screen.getByText(/explicit duplicate decision required/i)).toBeInTheDocument();
+  });
+
+  it("shows blocked semantic state when mismatch resolution is required", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "mismatch semantic",
+        normalizedText: "mismatch semantic",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "ICICI Bank",
+        accountNumber: "XX9999",
+        merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    const saveAttempt = vi.fn().mockResolvedValue({
+      ok: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "Critical fields are missing or ambiguous. Save is blocked.",
+        hint: "Resolve mismatch before retrying save.",
+        details: {
+          blockedFields: [],
+          accountMismatch: {
+            detected: true,
+            requiresResolution: true,
+            parsedBankName: "ICICI Bank",
+            parsedAccountNumber: "XX9999",
+            selectedBankName: "HDFC Bank",
+            selectedAccountNumber: "XX1234",
+          },
+          duplicateCandidate: {
+            detected: false,
+            requiresDecision: false,
+          },
+        },
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={saveAttempt} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("mismatch semantic");
+
+    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+
+    expect(await screen.findByText(/state: blocked by validation gates/i)).toBeInTheDocument();
+    expect(screen.getByText(/resolve blocked fields or account mismatch decisions/i)).toBeInTheDocument();
+  });
+
+  it("keeps save availability stable when returning focus after keyboard correction flow", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "keyboard flow",
+        normalizedText: "keyboard flow",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "needs-review",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("keyboard flow");
+
+    await user.click(await screen.findByRole("button", { name: /open guided corrections/i }));
+    await user.click(screen.getByLabelText(/^bank$/i));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByLabelText(/^bank$/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /open guided corrections/i }));
+    await user.type(screen.getByLabelText(/^bank$/i), "HDFC Bank");
+    await user.type(screen.getByLabelText(/^account$/i), "XX1234");
+    await user.type(screen.getByLabelText(/^merchant\/payee$/i), "BigBazaar");
+    await user.keyboard("{Enter}");
+
+    const saveButton = screen.getByRole("button", { name: /run save validation/i });
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    expect(saveButton).toBeEnabled();
+  });
 });
 
 

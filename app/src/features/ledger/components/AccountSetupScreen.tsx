@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -14,6 +14,7 @@ import {
 } from "../service";
 
 type AccountSetupScreenProps = {
+  initialValues?: Partial<AccountSetupFormValues>;
   submitAccount?: (
     payload: {
       bankName: string;
@@ -25,12 +26,18 @@ type AccountSetupScreenProps = {
 };
 
 export function AccountSetupScreen({
+  initialValues,
   submitAccount = createLedgerAccount,
   onAccountCreated,
 }: AccountSetupScreenProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [serverHint, setServerHint] = useState<string | null>(null);
   const [successState, setSuccessState] = useState<CreateAccountData | null>(null);
+  const resolvedInitialValues = useMemo<AccountSetupFormValues>(() => ({
+    bankName: initialValues?.bankName ?? "",
+    accountNumber: initialValues?.accountNumber ?? "",
+    openingBalance: initialValues?.openingBalance ?? "",
+  }), [initialValues?.accountNumber, initialValues?.bankName, initialValues?.openingBalance]);
 
   const {
     register,
@@ -41,12 +48,12 @@ export function AccountSetupScreen({
   } = useForm<AccountSetupFormValues>({
     resolver: zodResolver(accountSetupSchema),
     mode: "onChange",
-    defaultValues: {
-      bankName: "",
-      accountNumber: "",
-      openingBalance: "",
-    },
+    defaultValues: resolvedInitialValues,
   });
+
+  useEffect(() => {
+    reset(resolvedInitialValues);
+  }, [reset, resolvedInitialValues]);
 
   const watchedValues = watch();
   const blockedReasons = useMemo(() => {
@@ -85,47 +92,37 @@ export function AccountSetupScreen({
     }
 
     setSuccessState(result.data);
-    reset({ bankName: "", accountNumber: "", openingBalance: "" });
+    reset(resolvedInitialValues);
     await onAccountCreated?.(result.data);
   });
 
   return (
-    <section className="ledger-screen">
-      <div className="ledger-hero">
-        <span className="eyebrow">Save-triggered account confirmation</span>
-        <h1>Confirm the account and opening balance before the first write.</h1>
-        <p className="lede">
-          This confirmation surface appears only when save detects a new account identity. It creates one
-          local account record and one opening balance entry after the bank, account number, and starting
-          amount are explicit.
-        </p>
+    <section className="account-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="account-setup-title">
+      <div className="ledger-card account-setup-dialog">
+        <div className="account-setup-header">
+          <span className="eyebrow">Save-triggered account confirmation</span>
+          <h1 id="account-setup-title">Confirm the account and starting balance before the first write.</h1>
+          <p className="section-copy">
+            Save found a parsed account that is not in the local ledger yet. Confirm the account details
+            once, create the local baseline, then retry save validation.
+          </p>
+        </div>
 
-        <ul className="hero-points" aria-label="Safety checks included in this flow">
-          <li>
-            <span className="point-icon">1</span>
-            <div>
-              <strong>Composite account identity</strong>
-              Bank name and account number are stored as one deterministic account key.
-            </div>
-          </li>
-          <li>
-            <span className="point-icon">2</span>
-            <div>
-              <strong>Opening balance becomes a ledger entry</strong>
-              The ledger starts with an explicit opening entry instead of a mutable shortcut.
-            </div>
-          </li>
-          <li>
-            <span className="point-icon">3</span>
-            <div>
-              <strong>Keyboard-first blocking reasons</strong>
-              Missing fields and duplicate accounts are explained before unsafe writes can happen.
-            </div>
-          </li>
-        </ul>
-      </div>
+        <div className="account-setup-summary" aria-label="Safety checks included in this flow">
+          <div className="account-setup-summary-item">
+            <strong>Deterministic account key</strong>
+            <span>Bank name and account number stay paired as one local identity.</span>
+          </div>
+          <div className="account-setup-summary-item">
+            <strong>Explicit opening entry</strong>
+            <span>The starting balance is stored as a real ledger entry, not an inferred shortcut.</span>
+          </div>
+          <div className="account-setup-summary-item">
+            <strong>Safe retry path</strong>
+            <span>After creation, save validation can continue against the intended account.</span>
+          </div>
+        </div>
 
-      <div className="ledger-card">
         <h2>Account confirmation</h2>
         <p className="section-copy">
           Use the confirmed details from the pasted transaction context. Confirmation stays local and
