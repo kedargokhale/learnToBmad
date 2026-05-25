@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-25T18:10:00+05:30
+last_updated: 2026-05-25T20:05:00+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
@@ -101,8 +101,8 @@ development_status:
   3-6-correction-and-confidence-guidance-components: backlog
   3-7-insight-summary-story-components: done
   3-8-progressive-disclosure-and-confirmation-feedback: done
-  3-9-multi-account-baseline-scope-and-account-switcher: backlog
-  3-10-capture-surface-declutter-and-primary-action-simplification: backlog
+  3-9-multi-account-baseline-scope-and-account-switcher: ready-for-dev
+  3-10-capture-surface-declutter-and-primary-action-simplification: ready-for-dev
   epic-3-retrospective: optional
 
   epic-4: backlog
