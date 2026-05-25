@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 
 import { ReadinessStatus } from "./features/capture/components/ReadinessStatus";
 import { CorrectionPanel } from "./features/capture/components/CorrectionPanel";
+import { SaveConfirmationToast } from "./features/capture/components/SaveConfirmationToast";
 import { TransactionInput } from "./features/capture/components/TransactionInput";
 import {
   attemptTransactionSave,
@@ -120,6 +121,7 @@ function App() {
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateDecision | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryCode>("other");
+  const [captureConfirmation, setCaptureConfirmation] = useState<string | null>(null);
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
@@ -301,6 +303,7 @@ function App() {
       }
 
       setSaveResult(result.data);
+      setCaptureConfirmation("Transaction saved successfully. You can continue without dismissing this message.");
 
       if (result.data.acceptedForWrite) {
         await loadBaseline(true);
@@ -357,6 +360,7 @@ function App() {
             setAccountSetupInitialValues(null);
             setMismatchResolution(null);
             setDuplicateDecision(null);
+            setCaptureConfirmation(null);
             if (preview && isCategoryCode(preview.finalCategory)) {
               setSelectedCategory(preview.finalCategory);
             } else {
@@ -415,11 +419,20 @@ function App() {
             setSaveResult(null);
             setSaveLifecycleState("idle");
           }}
-          onApply={() => {
+          onApply={(hadBlockedFields) => {
             setIsCorrectionOpen(false);
+            if (hadBlockedFields) {
+              setCaptureConfirmation("Corrections updated. You can retry save when ready.");
+            }
           }}
           onClose={() => {
             setIsCorrectionOpen(false);
+          }}
+        />
+        <SaveConfirmationToast
+          message={captureConfirmation}
+          onClear={() => {
+            setCaptureConfirmation(null);
           }}
         />
       </section>

@@ -1,11 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReadinessStatus } from "./components/ReadinessStatus";
 import { CorrectionPanel } from "./components/CorrectionPanel";
+import { SaveConfirmationToast } from "./components/SaveConfirmationToast";
 import { TransactionInput } from "./components/TransactionInput";
 import {
   applyCorrectionMap,
@@ -56,6 +57,7 @@ function CaptureHarness({
   const [mismatchResolution, setMismatchResolution] = useState<"use-selected-account" | "use-parsed-account" | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<"save-as-new" | "skip-save" | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryCode>("other");
+  const [captureConfirmation, setCaptureConfirmation] = useState<string | null>(null);
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
@@ -97,6 +99,7 @@ function CaptureHarness({
           setIsCorrectionOpen(false);
           setMismatchResolution(null);
           setDuplicateDecision(null);
+          setCaptureConfirmation(null);
           if (nextPreview && isCategoryCode(nextPreview.finalCategory)) {
             setSelectedCategory(nextPreview.finalCategory);
           } else {
@@ -143,6 +146,7 @@ function CaptureHarness({
 
           setSaveLifecycleState("success");
           setSaveResult(result.data);
+          setCaptureConfirmation("Transaction saved successfully. You can continue without dismissing this message.");
           if (result.data.acceptedForWrite) {
             setLedgerSnapshot("Ledger entries: 2");
           }
@@ -191,11 +195,20 @@ function CaptureHarness({
           setSaveResult(null);
           setSaveLifecycleState("idle");
         }}
-        onApply={() => {
+        onApply={(hadBlockedFields) => {
           setIsCorrectionOpen(false);
+          if (hadBlockedFields) {
+            setCaptureConfirmation("Corrections updated. You can retry save when ready.");
+          }
         }}
         onClose={() => {
           setIsCorrectionOpen(false);
+        }}
+      />
+      <SaveConfirmationToast
+        message={captureConfirmation}
+        onClear={() => {
+          setCaptureConfirmation(null);
         }}
       />
       <div aria-label="ledger snapshot">{ledgerSnapshot}</div>
@@ -394,6 +407,10 @@ describe("Capture parse UX", () => {
     await user.paste("ICICI Bank Msg: INR 5000 credited to account 9988 on 01/05/2026 from ACME PAYROLL.");
 
     const firstStateText = (await screen.findByText(/state: ready for validation/i)).textContent;
+    const maybeShowFirst = screen.queryByRole("button", { name: /show parsed details/i });
+    if (maybeShowFirst) {
+      await user.click(maybeShowFirst);
+    }
     const firstMerchantMatches = screen.getAllByText(/acme payroll/i);
     const firstMerchantText = firstMerchantMatches[firstMerchantMatches.length - 1]?.textContent;
 
@@ -405,6 +422,10 @@ describe("Capture parse UX", () => {
     });
 
     const secondStateText = (await screen.findByText(/state: ready for validation/i)).textContent;
+    const maybeShowSecond = screen.queryByRole("button", { name: /show parsed details/i });
+    if (maybeShowSecond) {
+      await user.click(maybeShowSecond);
+    }
     const secondMerchantMatches = screen.getAllByText(/acme payroll/i);
     const secondMerchantText = secondMerchantMatches[secondMerchantMatches.length - 1]?.textContent;
 
@@ -1148,6 +1169,127 @@ describe("Capture parse UX", () => {
 
     await user.click(screen.getByLabelText(/bank message/i));
     expect(saveButton).toBeEnabled();
+  });
+
+  it("keeps parsed details hidden by default when preview is ready", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+
+    expect(await screen.findByText(/state: ready for validation/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /show parsed details/i })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /parsed critical field status/i })).not.toBeInTheDocument();
+  });
+
+  it("shows correction success confirmation after apply and keeps it non-blocking", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "debited INR 1250.50 on 2026-05-01",
+        normalizedText: "debited INR 1250.50 on 2026-05-01",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: null,
+        accountNumber: null,
+        merchantOrPayee: null,
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "needs-review",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("debited INR 1250.50 on 2026-05-01");
+    await user.click(await screen.findByRole("button", { name: /open guided corrections/i }));
+    await user.type(screen.getByLabelText(/^bank$/i), "HDFC Bank");
+    await user.type(screen.getByLabelText(/^account$/i), "XX1234");
+    await user.type(screen.getByLabelText(/^merchant\/payee$/i), "BigBazaar");
+    await user.click(screen.getByRole("button", { name: /apply corrections/i }));
+
+    expect(await screen.findByRole("status", { name: /capture confirmation/i })).toHaveTextContent(/corrections updated/i);
+    expect(screen.getByRole("button", { name: /run save validation/i })).toBeEnabled();
+  });
+});
+
+describe("Capture confirmation toast lifecycle", () => {
+  it("auto-dismisses confirmation after the default duration", () => {
+    vi.useFakeTimers();
+    const onClear = vi.fn();
+
+    render(
+      <SaveConfirmationToast
+        message="Transaction saved successfully. You can continue without dismissing this message."
+        onClear={onClear}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: /capture confirmation/i })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2499);
+    });
+    expect(onClear).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(onClear).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("restarts the dismiss timer when a newer confirmation replaces an older one", () => {
+    vi.useFakeTimers();
+    const onClear = vi.fn();
+
+    const { rerender } = render(
+      <SaveConfirmationToast message="Transaction saved successfully." onClear={onClear} />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    rerender(
+      <SaveConfirmationToast message="Corrections updated. You can retry save when ready." onClear={onClear} />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1499);
+    });
+    expect(onClear).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1001);
+    });
+    expect(onClear).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
   });
 });
 
