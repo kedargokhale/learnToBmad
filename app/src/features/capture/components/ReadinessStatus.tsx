@@ -2,10 +2,12 @@ import {
   type AccountMismatchResolution,
   type BlockedFieldReason,
   blockedFieldReasonSchema,
-  computeReadinessLabel,
+  deriveCaptureSemanticState,
   type DuplicateDecision,
   getFieldDisplayName,
   formatCurrency,
+  getCaptureSemanticStateCue,
+  getCaptureSemanticStateLabel,
   parsePreviewSchema,
   getSaveLifecycleLabel,
   saveGateDecisionDetailsSchema,
@@ -91,8 +93,19 @@ export function ReadinessStatus({
   const saveBlockedFields = blockedFieldParse.success ? blockedFieldParse.data : [];
   const saveGateDetailsParse = saveGateDecisionDetailsSchema.safeParse(saveError?.details);
   const saveGateDetails = saveGateDetailsParse.success ? saveGateDetailsParse.data : null;
-  const accountMismatchSignal = saveGateDetails?.accountMismatch ?? preflightAccountMismatch;
+  const accountMismatchSignal = saveGateDetails?.accountMismatch
+    ? {
+        ...saveGateDetails.accountMismatch,
+        requiresResolution:
+          saveGateDetails.accountMismatch.requiresResolution ||
+          Boolean(preflightAccountMismatch?.requiresResolution),
+      }
+    : preflightAccountMismatch;
   const duplicateCandidateSignal = saveGateDetails?.duplicateCandidate;
+  const requiresMismatchResolution = Boolean(
+    accountMismatchSignal?.requiresResolution && !mismatchResolution,
+  );
+  const requiresDuplicateDecision = Boolean(duplicateCandidateSignal?.detected && duplicateCandidateSignal.requiresDecision && !duplicateDecision);
 
   if (error) {
     return (
@@ -132,6 +145,19 @@ export function ReadinessStatus({
   ];
   const selectedCategorySource: CategorySource =
     selectedCategory === viewModel.suggestedCategory ? "suggested" : "user-override";
+  const semanticState = deriveCaptureSemanticState({
+    readinessState: viewModel.readinessState,
+    requiresMismatchResolution,
+    requiresDuplicateDecision,
+  });
+  const semanticIcon =
+    semanticState === "ready"
+      ? "[OK]"
+      : semanticState === "needs-review"
+        ? "[!]"
+        : semanticState === "duplicate-flagged"
+          ? "[DUP]"
+          : "[X]";
 
   return (
     <section className="ledger-card capture-card" aria-live="polite">
@@ -152,10 +178,10 @@ export function ReadinessStatus({
           </div>
         </div>
       ) : null}
-      <div className="success-banner" role="status">
-        <strong>State: {computeReadinessLabel(viewModel.readinessState)}</strong>
+      <div className={`semantic-banner semantic-banner--${semanticState}`} role="status" aria-live="polite">
+        <strong>{semanticIcon} State: {getCaptureSemanticStateLabel(semanticState)}</strong>
         <div>
-          Non-color cue: {viewModel.readinessState === "ready" ? "All critical fields detected." : "One or more critical fields need review."}
+          Non-color cue: {getCaptureSemanticStateCue(semanticState)}
         </div>
       </div>
 
@@ -221,7 +247,7 @@ export function ReadinessStatus({
         <div className="status-banner" role="alert">
           <strong>{saveError.message}</strong>
           {saveError.hint ? <div>{saveError.hint}</div> : null}
-          {accountMismatchSignal?.detected ? (
+          {accountMismatchSignal?.requiresResolution ? (
             <div>
               Non-color cue: Account mismatch resolution is required before save validation can proceed.
             </div>
@@ -247,7 +273,7 @@ export function ReadinessStatus({
         </div>
       ) : null}
 
-      {accountMismatchSignal?.detected ? (
+      {accountMismatchSignal?.requiresResolution ? (
         <AccountMismatchResolver
           value={mismatchResolution}
           parsedBankName={accountMismatchSignal.parsedBankName}

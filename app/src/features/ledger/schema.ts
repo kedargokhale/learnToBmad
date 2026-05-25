@@ -8,7 +8,7 @@ export const accountSetupSchema = z.object({
     .string()
     .trim()
     .min(1, "Account number is required.")
-    .regex(/^[A-Za-z0-9\-\/ ]+$/, "Account number can only include letters, numbers, spaces, hyphens, and slashes."),
+    .regex(/^[A-Za-z0-9*\-\/ ]+$/, "Account number can only include letters, numbers, spaces, asterisks, hyphens, and slashes."),
   openingBalance: z
     .string()
     .trim()

@@ -37,6 +37,12 @@ import {
 } from "./features/ledger/service";
 import "./App.css";
 
+type AccountSetupInitialValues = {
+  bankName: string;
+  accountNumber: string;
+  openingBalance: string;
+};
+
 function normalizeCompareText(value: string): string {
   return value
     .split("")
@@ -47,6 +53,38 @@ function normalizeCompareText(value: string): string {
 
 function hasParsedAccountIdentity(preview: ParsePreviewData | null): boolean {
   return Boolean(preview?.bankName?.trim() && preview?.accountNumber?.trim());
+}
+
+function getAccountSetupInitialValues(
+  preview: ParsePreviewData | null,
+): AccountSetupInitialValues | null {
+  const bankName = preview?.bankName?.trim();
+  const accountNumber = preview?.accountNumber?.trim();
+
+  if (!bankName || !accountNumber) {
+    return null;
+  }
+
+  return {
+    bankName,
+    accountNumber,
+    openingBalance: "",
+  };
+}
+
+function isMissingParsedAccountError(error: CommandError): boolean {
+  if (error.code !== "VALIDATION_FAILED") {
+    return false;
+  }
+
+  const saveGateDetailsParse = saveGateDecisionDetailsSchema.safeParse(error.details);
+  if (!saveGateDetailsParse.success) {
+    return false;
+  }
+
+  return saveGateDetailsParse.data.blockedFields.some(
+    (item) => item.field === "accountNumber" && /not yet available in the local ledger/i.test(item.hint),
+  );
 }
 
 function UnsupportedRuntimeScreen() {
@@ -78,6 +116,7 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [isAccountSetupPromptOpen, setIsAccountSetupPromptOpen] = useState(false);
+  const [accountSetupInitialValues, setAccountSetupInitialValues] = useState<AccountSetupInitialValues | null>(null);
   const [mismatchResolution, setMismatchResolution] = useState<AccountMismatchResolution | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateDecision | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryCode>("other");
@@ -122,8 +161,12 @@ function App() {
         selectedAccountNumber: baseline.account.accountNumber,
       }
     : null;
-  const requiresMismatchResolution = Boolean(saveGateDetails?.accountMismatch?.detected);
-  const requiresDuplicateDecision = Boolean(saveGateDetails?.duplicateCandidate?.detected);
+  const requiresMismatchResolution = Boolean(
+    saveGateDetails?.accountMismatch?.requiresResolution || preflightAccountMismatch?.requiresResolution,
+  );
+  const requiresDuplicateDecision = Boolean(
+    saveGateDetails?.duplicateCandidate?.detected && saveGateDetails?.duplicateCandidate?.requiresDecision,
+  );
   const decisionBlockedReasons: string[] = [];
 
   if (requiresMismatchResolution && !mismatchResolution) {
@@ -154,6 +197,19 @@ function App() {
           entries: [],
           categoryInsights: [],
           merchantInsights: [],
+          trendAlert: {
+            windowPreset: "last-30-days",
+            currentSpendMinor: 0,
+            baselineSpendMinor: 0,
+            deltaPercent: 0,
+            thresholdPercent: 20,
+            isAlert: false,
+            reason: "No transactions yet.",
+          },
+          runningBalance: {
+            windowPreset: "last-30-days",
+            points: [],
+          },
           ordering: "created_at_desc_id_desc",
         });
         return;
@@ -169,6 +225,19 @@ function App() {
         entries: [],
         categoryInsights: [],
         merchantInsights: [],
+        trendAlert: {
+          windowPreset: "last-30-days",
+          currentSpendMinor: 0,
+          baselineSpendMinor: 0,
+          deltaPercent: 0,
+          thresholdPercent: 20,
+          isAlert: false,
+          reason: "No transactions yet.",
+        },
+        runningBalance: {
+          windowPreset: "last-30-days",
+          points: [],
+        },
         ordering: "created_at_desc_id_desc",
       });
     } finally {
@@ -183,6 +252,7 @@ function App() {
     }
 
     if (!baseline?.account && hasParsedAccountIdentity(correctedPreview)) {
+      setAccountSetupInitialValues(getAccountSetupInitialValues(correctedPreview));
       setIsAccountSetupPromptOpen(true);
       setSaveLifecycleState("blocked");
       return;
@@ -217,6 +287,14 @@ function App() {
       });
 
       if (!result.ok) {
+        if (mismatchResolution === "use-parsed-account" && isMissingParsedAccountError(result.error)) {
+          setAccountSetupInitialValues(getAccountSetupInitialValues(correctedPreview));
+          setIsAccountSetupPromptOpen(true);
+          setSaveError(null);
+          setSaveLifecycleState("idle");
+          return;
+        }
+
         setSaveLifecycleState("failed");
         setSaveError(result.error);
         return;
@@ -275,6 +353,8 @@ function App() {
             setSaveResult(null);
             setSaveLifecycleState("idle");
             setIsCorrectionOpen(false);
+            setIsAccountSetupPromptOpen(false);
+            setAccountSetupInitialValues(null);
             setMismatchResolution(null);
             setDuplicateDecision(null);
             if (preview && isCategoryCode(preview.finalCategory)) {
@@ -381,10 +461,15 @@ function App() {
         </section>
       )}
 
-      {isAccountSetupPromptOpen && !baseline?.account ? (
+      {isAccountSetupPromptOpen ? (
         <AccountSetupScreen
+          initialValues={accountSetupInitialValues ?? undefined}
           onAccountCreated={async () => {
             await loadBaseline();
+            setSaveError(null);
+            setSaveResult(null);
+            setSaveLifecycleState("idle");
+            setAccountSetupInitialValues(null);
             setIsAccountSetupPromptOpen(false);
           }}
         />
