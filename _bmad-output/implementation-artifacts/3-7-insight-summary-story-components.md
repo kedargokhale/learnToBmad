@@ -1,6 +1,6 @@
 # Story 3.7: Insight Summary Story Components
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -16,22 +16,30 @@ so that I can quickly understand spending outcomes after each save.
 
 ## Tasks / Subtasks
 
-- [ ] Consolidate the dashboard summary contract around existing insight data (AC: 1, 2, 3)
-  - [ ] Extend the current baseline/dashboard response shape so category, merchant, and trend narratives can be consumed through one typed summary path.
-  - [ ] Reuse category, merchant, and trend aggregates from Stories 3.3 and 3.4 instead of recomputing separate frontend-only narratives in multiple components.
-- [ ] Build reusable StoryCard and InsightSummary components (AC: 1, 3)
-  - [ ] Implement one consistent card shell for title, headline metric, supporting copy, optional badge, and supporting visual slot.
-  - [ ] Support category, merchant, and trend variants through typed props or normalized view models rather than copy-pasted layouts.
-- [ ] Integrate the insight summary into the current dashboard shell (AC: 1, 2)
-  - [ ] Render the summary in the existing ledger/dashboard area without breaking the capture surface or transaction history view.
-  - [ ] Keep dashboard refresh tied to the committed save path only, using the existing post-save baseline reload.
-- [ ] Implement deterministic empty states and next-action guidance (AC: 3)
-  - [ ] Show a deliberate empty-state card for each unavailable insight instead of leaving blank space.
-  - [ ] Provide concise next-action copy such as saving more categorized transactions or selecting a supported time preset.
-- [ ] Add regression and accessibility coverage (AC: 1, 2, 3)
-  - [ ] Add frontend tests for summary rendering, empty states, responsive card arrangement, and post-save refresh behavior.
-  - [ ] Add backend tests if summary contracts are assembled in Rust, covering deterministic card ordering and stable empty-state payloads.
-  - [ ] Keep Story 1.2 onboarding correction, Story 2.5 deterministic save behavior, and existing ledger ordering tests green.
+- [x] Consolidate the dashboard summary contract around existing insight data (AC: 1, 2, 3)
+  - [x] Extend the current baseline/dashboard response shape so category, merchant, and trend narratives can be consumed through one typed summary path.
+  - [x] Reuse category, merchant, and trend aggregates from Stories 3.3 and 3.4 instead of recomputing separate frontend-only narratives in multiple components.
+- [x] Build reusable StoryCard and InsightSummary components (AC: 1, 3)
+  - [x] Implement one consistent card shell for title, headline metric, supporting copy, optional badge, and supporting visual slot.
+  - [x] Support category, merchant, and trend variants through typed props or normalized view models rather than copy-pasted layouts.
+- [x] Integrate the insight summary into the current dashboard shell (AC: 1, 2)
+  - [x] Render the summary in the existing ledger/dashboard area without breaking the capture surface or transaction history view.
+  - [x] Keep dashboard refresh tied to the committed save path only, using the existing post-save baseline reload.
+- [x] Implement deterministic empty states and next-action guidance (AC: 3)
+  - [x] Show a deliberate empty-state card for each unavailable insight instead of leaving blank space.
+  - [x] Provide concise next-action copy such as saving more categorized transactions or selecting a supported time preset.
+- [x] Add regression and accessibility coverage (AC: 1, 2, 3)
+  - [x] Add frontend tests for summary rendering, empty states, responsive card arrangement, and post-save refresh behavior.
+  - [x] Add backend tests if summary contracts are assembled in Rust, covering deterministic card ordering and stable empty-state payloads.
+  - [x] Keep Story 1.2 onboarding correction, Story 2.5 deterministic save behavior, and existing ledger ordering tests green.
+
+### Review Findings
+
+- [x] [Review][Patch] Partial insight payload can drop required cards instead of rendering deterministic per-kind fallbacks [app/src/features/dashboard/components/InsightSummary.tsx:56]
+- [x] [Review][Patch] Category headline humanization only replaces the first underscore and can render malformed labels [app/src-tauri/src/commands/ledger.rs:1240]
+- [x] [Review][Patch] Summary currency formatting regressed to non-localized fixed-string output [app/src-tauri/src/commands/ledger.rs:1343]
+- [x] [Review][Patch] Trend/balance section aria label no longer matches rendered content after TrendAlertCard removal [app/src/features/ledger/components/LedgerBaselineView.tsx:66]
+- [x] [Review][Patch] Responsive arrangement regression coverage for summary cards is still missing [app/src/features/ledger/ledger.test.tsx:453]
 
 ## Dev Notes
 
@@ -204,7 +212,14 @@ Implication: dashboard summary integration must not reintroduce setup-first beha
 
 ### Agent Model Used
 
-GPT-5.4
+GPT-5.3-Codex
+
+### Implementation Plan
+
+- Extend `get_ledger_baseline` with one normalized `insight_summary` card contract while reusing existing category, merchant, and trend aggregate outputs.
+- Refactor dashboard card rendering to consume typed summary cards rather than composing separate per-insight layouts.
+- Keep save-triggered refresh behavior unchanged and verify summaries only refresh through committed-write baseline reload.
+- Add frontend and backend regression tests for deterministic card ordering and stable empty-state guidance payloads.
 
 ### Debug Log References
 
@@ -214,10 +229,27 @@ GPT-5.4
 
 ### Completion Notes List
 
-- Story 3.7 is anchored to the current code reality: dashboard summary work must extend the existing ledger baseline path before any deeper architectural split.
-- Reuse of Stories 3.3 and 3.4 data contracts is called out explicitly to prevent duplicate aggregation logic.
-- Empty-state behavior and post-save refresh constraints are documented as non-regression requirements.
+- Implemented a normalized `insightSummary` contract across backend and frontend with deterministic `category`, `merchant`, `trend` ordering and stable empty-state payloads.
+- Refactored `StoryCard`/`InsightSummary` into a single reusable typed card shell supporting headline metric, supporting copy, optional badge, and explicit next-action empty states.
+- Integrated summary cards in the ledger dashboard shell while preserving capture surface behavior, transaction history rendering, and post-`acceptedForWrite` refresh semantics.
+- Added regression coverage in Vitest and Rust tests for summary rendering, empty states, deterministic ordering, and post-save card refresh behavior.
+- Validation completed successfully:
+  - `pnpm test` (43 passed)
+  - `cargo test commands::ledger` (14 passed)
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-7-insight-summary-story-components.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/App.css
+- app/src/features/dashboard/components/InsightSummary.tsx
+- app/src/features/dashboard/components/StoryCard.tsx
+- app/src/features/ledger/components/LedgerBaselineView.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/features/ledger/schema.ts
+- app/src/features/ledger/service.ts
+- app/src-tauri/src/commands/ledger.rs
+
+## Change Log
+
+- 2026-05-25: Implemented Story 3.7 insight summary normalization, dashboard component refactor, deterministic empty states, and cross-layer regression tests; status moved to `review`.

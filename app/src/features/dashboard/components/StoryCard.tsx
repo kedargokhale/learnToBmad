@@ -1,39 +1,37 @@
+import type { ReactNode } from "react";
+import type { LedgerInsightSummaryCardData } from "../../ledger/service";
+
 type StoryCardProps = {
-  title: string;
-  subtitle: string;
-  rows: Array<{
-    label: string;
-    value: string;
-    meta?: string;
-  }>;
-  emptyState: string;
+  card: LedgerInsightSummaryCardData;
+  visualSlot?: ReactNode;
 };
 
-export function StoryCard({ title, subtitle, rows, emptyState }: StoryCardProps) {
+export function StoryCard({ card, visualSlot }: StoryCardProps) {
   return (
-    <article className="story-card" aria-label={title}>
+    <article className="story-card" aria-label={card.title}>
       <header className="story-card-header">
-        <h3>{title}</h3>
-        <p>{subtitle}</p>
+        <div className="story-card-heading-row">
+          <h3>{card.title}</h3>
+          {card.badgeLabel ? <span className="story-card-badge">{card.badgeLabel}</span> : null}
+        </div>
+        <p>{card.supportingText}</p>
       </header>
 
-      {rows.length === 0 ? (
+      <div className="story-card-metric" aria-live="polite">
+        <div className="story-card-metric-label">{card.metricLabel}</div>
+        <div className="story-card-metric-value">{card.metricValue}</div>
+        <div className="story-card-headline">{card.headline}</div>
+      </div>
+
+      {visualSlot ?? null}
+
+      {card.isEmpty ? (
         <div className="story-card-empty" role="status">
-          {emptyState}
+          <strong>{card.emptyState.title}</strong>
+          <p>{card.emptyState.detail}</p>
+          <span>{card.emptyState.nextAction}</span>
         </div>
-      ) : (
-        <ol className="story-card-list">
-          {rows.map((row) => (
-            <li key={`${row.label}-${row.value}`} className="story-card-item">
-              <div>
-                <strong>{row.label}</strong>
-                {row.meta ? <div className="story-card-meta">{row.meta}</div> : null}
-              </div>
-              <span>{row.value}</span>
-            </li>
-          ))}
-        </ol>
-      )}
+      ) : null}
     </article>
   );
 }

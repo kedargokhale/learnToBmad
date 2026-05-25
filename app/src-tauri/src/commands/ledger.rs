@@ -56,7 +56,31 @@ pub struct LedgerBaselineResponse {
     pub merchant_insights: Vec<MerchantInsightSummary>,
     pub trend_alert: TrendAlertSummary,
     pub running_balance: RunningBalanceSummary,
+    pub insight_summary: Vec<InsightSummaryCard>,
     pub ordering: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightSummaryCard {
+    pub kind: &'static str,
+    pub title: String,
+    pub headline: String,
+    pub metric_label: String,
+    pub metric_value: String,
+    pub supporting_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge_label: Option<String>,
+    pub is_empty: bool,
+    pub empty_state: InsightCardEmptyState,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightCardEmptyState {
+    pub title: String,
+    pub detail: String,
+    pub next_action: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -763,6 +787,53 @@ mod tests {
         assert_eq!(baseline.merchant_insights[1].total_amount_minor, 7000);
         assert_eq!(baseline.merchant_insights[1].transaction_count, 1);
         assert_eq!(baseline.merchant_insights[1].last_seen_date.as_deref(), Some("2026-05-04"));
+
+        assert_eq!(baseline.insight_summary.len(), 3);
+        assert_eq!(baseline.insight_summary[0].kind, "category");
+        assert_eq!(baseline.insight_summary[1].kind, "merchant");
+        assert_eq!(baseline.insight_summary[2].kind, "trend");
+    }
+
+    #[tokio::test]
+    async fn builds_stable_empty_state_payloads_for_missing_insight_rows() {
+        let pool = setup_pool().await;
+
+        create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "Axis".to_string(),
+                account_number: "AB12".to_string(),
+                opening_balance_minor: 5000,
+            },
+        )
+        .await
+        .expect("account should be created");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.insight_summary.len(), 3);
+        assert_eq!(baseline.insight_summary[0].kind, "category");
+        assert!(baseline.insight_summary[0].is_empty);
+        assert_eq!(
+            baseline.insight_summary[0].empty_state.title,
+            "No categorized transactions yet"
+        );
+
+        assert_eq!(baseline.insight_summary[1].kind, "merchant");
+        assert!(baseline.insight_summary[1].is_empty);
+        assert_eq!(
+            baseline.insight_summary[1].empty_state.title,
+            "No merchant activity yet"
+        );
+
+        assert_eq!(baseline.insight_summary[2].kind, "trend");
+        assert!(baseline.insight_summary[2].is_empty);
+        assert_eq!(
+            baseline.insight_summary[2].empty_state.title,
+            "Not enough history for a trend"
+        );
     }
 
     #[tokio::test]
@@ -1043,6 +1114,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
                 window_preset: "30d",
                 points: Vec::new(),
             },
+            insight_summary: Vec::new(),
             ordering: "created_at_desc_id_desc",
         });
     };
@@ -1094,7 +1166,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         .map(|row| row.get::<i64, _>("total_amount_minor"))
         .sum();
 
-    let category_insights = category_rows
+    let category_insights: Vec<CategoryInsightSummary> = category_rows
         .into_iter()
         .map(|row| {
             let total_amount_minor = row.get::<i64, _>("total_amount_minor");
@@ -1121,7 +1193,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
     .await
     .map_err(|error| CommandError::persistence(error.to_string()))?;
 
-    let merchant_insights = merchant_rows
+    let merchant_insights: Vec<MerchantInsightSummary> = merchant_rows
         .into_iter()
         .map(|row| MerchantInsightSummary {
             merchant_or_payee: row.get::<String, _>("merchant_or_payee"),
@@ -1133,6 +1205,11 @@ pub(crate) async fn get_ledger_baseline_with_pool(
 
     let trend_alert = compute_trend_alert(pool, account_id).await?;
     let running_balance = compute_running_balance(pool, account_id).await?;
+    let insight_summary = build_insight_summary_cards(
+        &category_insights,
+        &merchant_insights,
+        &trend_alert,
+    );
 
     Ok(LedgerBaselineResponse {
         account: Some(LedgerAccountSummary {
@@ -1146,8 +1223,173 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         merchant_insights,
         trend_alert,
         running_balance,
+        insight_summary,
         ordering: "created_at_desc_id_desc",
     })
+}
+
+fn build_insight_summary_cards(
+    category_insights: &[CategoryInsightSummary],
+    merchant_insights: &[MerchantInsightSummary],
+    trend_alert: &TrendAlertSummary,
+) -> Vec<InsightSummaryCard> {
+    let category_card = if let Some(top_category) = category_insights.first() {
+        InsightSummaryCard {
+            kind: "category",
+            title: "Category story".to_string(),
+            headline: humanize_category_name(&top_category.category_name),
+            metric_label: "Top category spend".to_string(),
+            metric_value: format_minor_units(top_category.total_amount_minor),
+            supporting_text: format!(
+                "{} transactions account for {:.1}% of persisted debit spend.",
+                top_category.transaction_count, top_category.share_percent
+            ),
+            badge_label: Some(format!("{:.1}% share", top_category.share_percent)),
+            is_empty: false,
+            empty_state: InsightCardEmptyState {
+                title: "No categorized transactions yet".to_string(),
+                detail: "There are no persisted debit transactions to summarize by category.".to_string(),
+                next_action: "Save more categorized transactions to unlock this insight.".to_string(),
+            },
+        }
+    } else {
+        InsightSummaryCard {
+            kind: "category",
+            title: "Category story".to_string(),
+            headline: "No category signal available".to_string(),
+            metric_label: "Top category spend".to_string(),
+            metric_value: format_minor_units(0),
+            supporting_text: "Debit category concentration appears here after saves are committed.".to_string(),
+            badge_label: None,
+            is_empty: true,
+            empty_state: InsightCardEmptyState {
+                title: "No categorized transactions yet".to_string(),
+                detail: "There are no persisted debit transactions to summarize by category.".to_string(),
+                next_action: "Save more categorized transactions to unlock this insight.".to_string(),
+            },
+        }
+    };
+
+    let merchant_card = if let Some(top_merchant) = merchant_insights.first() {
+        InsightSummaryCard {
+            kind: "merchant",
+            title: "Merchant story".to_string(),
+            headline: top_merchant.merchant_or_payee.clone(),
+            metric_label: "Top merchant spend".to_string(),
+            metric_value: format_minor_units(top_merchant.total_amount_minor),
+            supporting_text: match &top_merchant.last_seen_date {
+                Some(last_seen) => format!(
+                    "{} transactions. Last seen on {}.",
+                    top_merchant.transaction_count, last_seen
+                ),
+                None => format!("{} transactions.", top_merchant.transaction_count),
+            },
+            badge_label: None,
+            is_empty: false,
+            empty_state: InsightCardEmptyState {
+                title: "No merchant activity yet".to_string(),
+                detail: "There are no eligible merchant rows in persisted debit history.".to_string(),
+                next_action: "Save additional transactions to build merchant insights.".to_string(),
+            },
+        }
+    } else {
+        InsightSummaryCard {
+            kind: "merchant",
+            title: "Merchant story".to_string(),
+            headline: "No merchant signal available".to_string(),
+            metric_label: "Top merchant spend".to_string(),
+            metric_value: format_minor_units(0),
+            supporting_text: "Merchant concentration appears here after persisted debit activity.".to_string(),
+            badge_label: None,
+            is_empty: true,
+            empty_state: InsightCardEmptyState {
+                title: "No merchant activity yet".to_string(),
+                detail: "There are no eligible merchant rows in persisted debit history.".to_string(),
+                next_action: "Save additional transactions to build merchant insights.".to_string(),
+            },
+        }
+    };
+
+    let trend_has_window = trend_alert.baseline_spend_minor > 0;
+    let trend_card = InsightSummaryCard {
+        kind: "trend",
+        title: "Trend story".to_string(),
+        headline: trend_alert.reason.clone(),
+        metric_label: "Window delta".to_string(),
+        metric_value: format!("{:.1}%", trend_alert.delta_percent),
+        supporting_text: format!(
+            "Current {} vs baseline {} for preset {}.",
+            format_minor_units(trend_alert.current_spend_minor),
+            format_minor_units(trend_alert.baseline_spend_minor),
+            trend_alert.window_preset
+        ),
+        badge_label: Some(if trend_alert.is_alert {
+            "Alert".to_string()
+        } else {
+            "Stable".to_string()
+        }),
+        is_empty: !trend_has_window,
+        empty_state: InsightCardEmptyState {
+            title: "Not enough history for a trend".to_string(),
+            detail: "A deterministic trend requires persisted debit data across baseline and current windows.".to_string(),
+            next_action: "Save more categorized transactions in this preset window.".to_string(),
+        },
+    };
+
+    vec![category_card, merchant_card, trend_card]
+}
+
+fn format_minor_units(value: i64) -> String {
+    let sign = if value < 0 { "-" } else { "" };
+    let absolute_minor = value.unsigned_abs();
+    let major_units = absolute_minor / 100;
+    let minor_units = absolute_minor % 100;
+    format!(
+        "{}INR {}.{:02}",
+        sign,
+        format_indian_grouping(major_units),
+        minor_units
+    )
+}
+
+fn format_indian_grouping(value: u64) -> String {
+    let digits = value.to_string();
+    if digits.len() <= 3 {
+        return digits;
+    }
+
+    let split_at = digits.len() - 3;
+    let head = &digits[..split_at];
+    let tail = &digits[split_at..];
+
+    let first_group_len = if head.len() % 2 == 0 { 2 } else { 1 };
+    let mut grouped = String::new();
+    grouped.push_str(&head[..first_group_len]);
+
+    let mut index = first_group_len;
+    while index < head.len() {
+        grouped.push(',');
+        grouped.push_str(&head[index..index + 2]);
+        index += 2;
+    }
+
+    grouped.push(',');
+    grouped.push_str(tail);
+    grouped
+}
+
+fn humanize_category_name(raw: &str) -> String {
+    raw.split('_')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 async fn compute_trend_alert(
