@@ -482,6 +482,42 @@ So that I can stay focused while still recovering quickly from issues.
 **Then** error copy is friendly and actionable
 **And** each message states the next safe user action.
 
+### Story 3.9: Multi-Account Baseline Scope and Account Switcher
+
+As a user,
+I want all-accounts baseline visibility with optional account filtering,
+So that I can trust where my transactions are shown when multiple accounts exist.
+
+**Acceptance Criteria:**
+
+**Given** multiple accounts with saved transactions
+**When** I open the ledger baseline/dashboard surface
+**Then** baseline/history/insight data considers all accounts by default
+**And** the scope is clearly labeled as all-accounts.
+
+**Given** I apply an account filter
+**When** I select a specific account
+**Then** baseline/history/insight data reflects only that account
+**And** switching between all-accounts and filtered modes refreshes deterministically.
+
+### Story 3.10: Capture Surface Declutter and Primary Action Simplification
+
+As a user,
+I want a cleaner capture surface with concise action labels,
+So that I can complete parse-to-save flow without cognitive overload.
+
+**Acceptance Criteria:**
+
+**Given** the capture screen
+**When** I review primary actions
+**Then** the save action label is concise (`Save`)
+**And** repeated explanatory copy is reduced while preserving required safety guidance.
+
+**Given** save is blocked or requires decisions
+**When** guidance is shown
+**Then** reasons remain explicit and actionable
+**And** visual hierarchy emphasizes next action over repeated instructional text.
+
 ## Epic 4: Export and Import Safely for Portability and Recovery
 
 Users can securely export and restore local data through deterministic, encrypted, and integrity-validated flows with explicit conflict decisions.

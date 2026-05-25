@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30T18:14:54.3349761+05:30
-last_updated: 2026-05-25T16:53:00+05:30
+last_updated: 2026-05-25T18:10:00+05:30
 project: learnToBmad
 project_key: NOKEY
 tracking_system: file-system
@@ -58,6 +58,23 @@ course_corrections:
         - Product Owner
         - Developer
       notes: "Implement onboarding behavior alignment and keep deterministic save/validation guarantees intact."
+  - date: 2026-05-25
+    id: cc-2026-05-25-multi-account-ledger-and-capture-clarity
+    scope: moderate
+    status: approved
+    trigger: "Ledger baseline/history appeared account-ambiguous after multi-account saves; capture UI felt cluttered; primary action label needed simplification."
+    impacted_artifacts:
+      - _bmad-output/planning-artifacts/prd.md
+      - _bmad-output/planning-artifacts/epics.md
+      - _bmad-output/planning-artifacts/architecture.md
+      - _bmad-output/planning-artifacts/ux-design-specification.md
+      - _bmad-output/implementation-artifacts/deferred-work.md
+      - _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-25.md
+    handoff:
+      recipients:
+        - Product Owner
+        - Developer
+      notes: "Implement all-accounts baseline/history as default with optional account filtering, plus capture-surface declutter with primary Save label, then run targeted gap sweep."
 
 development_status:
   epic-1: in-progress
@@ -84,6 +101,8 @@ development_status:
   3-6-correction-and-confidence-guidance-components: backlog
   3-7-insight-summary-story-components: done
   3-8-progressive-disclosure-and-confirmation-feedback: done
+  3-9-multi-account-baseline-scope-and-account-switcher: backlog
+  3-10-capture-surface-declutter-and-primary-action-simplification: backlog
   epic-3-retrospective: optional
 
   epic-4: backlog
