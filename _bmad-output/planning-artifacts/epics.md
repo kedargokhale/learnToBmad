@@ -493,12 +493,22 @@ So that I can trust where my transactions are shown when multiple accounts exist
 **Given** multiple accounts with saved transactions
 **When** I open the ledger baseline/dashboard surface
 **Then** baseline/history/insight data considers all accounts by default
-**And** the scope is clearly labeled as all-accounts.
+**And** a persistent visible scope label reads "All accounts" in both ledger baseline and insight regions.
+
+**Given** baseline/history/insight data is returned to the UI
+**When** the response is processed
+**Then** response metadata includes scope with exact value "all-accounts" or "account:<id>"
+**And** the UI label must match that scope metadata exactly.
 
 **Given** I apply an account filter
 **When** I select a specific account
 **Then** baseline/history/insight data reflects only that account
-**And** switching between all-accounts and filtered modes refreshes deterministically.
+**And** the visible scope label switches to "Account: <bank> <account>".
+
+**Given** I switch scope between "All accounts" and a selected account
+**When** the refresh completes
+**Then** the same input state and selected scope always produce the same baseline/history/insight values
+**And** the refresh completes within the existing dashboard refresh target.
 
 ### Story 3.10: Capture Surface Declutter and Primary Action Simplification
 
@@ -510,13 +520,18 @@ So that I can complete parse-to-save flow without cognitive overload.
 
 **Given** the capture screen
 **When** I review primary actions
-**Then** the save action label is concise (`Save`)
-**And** repeated explanatory copy is reduced while preserving required safety guidance.
+**Then** the primary transaction action label is exactly "Save"
+**And** process-oriented alternatives (for example "Run save validation") are not shown.
+
+**Given** parse and validation states are rendered
+**When** I view capture guidance near the primary action
+**Then** no more than one concise guidance line is shown per state in the primary capture area
+**And** additional details appear only through progressive disclosure components.
 
 **Given** save is blocked or requires decisions
 **When** guidance is shown
 **Then** reasons remain explicit and actionable
-**And** visual hierarchy emphasizes next action over repeated instructional text.
+**And** the first visible guidance line names the next required user action.
 
 ## Epic 4: Export and Import Safely for Portability and Recovery
 

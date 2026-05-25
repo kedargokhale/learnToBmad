@@ -507,6 +507,14 @@ npm run tauri add sql
 - Failure: `{ ok: false, error: { code, message, hint?, details? } }`
 - Raw internal errors are never surfaced directly over the UI/native boundary.
 
+**Ledger Scope Command Contracts (Story 3.9):**
+
+- `list_accounts`: returns available accounts for filter/switcher controls.
+- `get_ledger_baseline`: default behavior returns all-accounts aggregate baseline/history; optional `accountId` argument returns account-filtered data.
+- `get_dashboard_insights`: default behavior returns all-accounts aggregate insights; optional `accountId` argument returns account-filtered insights.
+- Every baseline/history/insight success response must include deterministic scope metadata in `meta.scope` with exact values: `all-accounts` or `account:<id>`.
+- For identical data state and identical scope input, command outputs must be deterministic across repeated calls and app restarts.
+
 **Data Exchange Formats:**
 
 - Dates serialized as ISO-8601 UTC strings.
