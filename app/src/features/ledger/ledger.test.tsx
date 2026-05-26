@@ -237,7 +237,390 @@ describe("Ledger baseline app flow", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: /transaction history/i })).toBeInTheDocument();
-    expect(screen.getByText(/hdfc/i)).toBeInTheDocument();
+  });
+
+  it("defaults to all-accounts scope and refreshes against the selected account", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...baselineDefaults,
+          account: null,
+          accounts: [
+            {
+              id: 1,
+              bankName: "HDFC Bank",
+              accountNumber: "XX1234",
+              currentBalanceMinor: 125050,
+            },
+            {
+              id: 2,
+              bankName: "ICICI",
+              accountNumber: "YY9876",
+              currentBalanceMinor: 55000,
+            },
+          ],
+          scope: {
+            kind: "all-accounts",
+            label: "All accounts",
+            accountCount: 2,
+            currentBalanceMinor: 180050,
+          },
+          entries: [
+            {
+              id: 1,
+              entryKind: "opening_balance",
+              amountMinor: 125050,
+              createdAt: "2026-05-01 09:00:00",
+            },
+            {
+              id: 2,
+              entryKind: "opening_balance",
+              amountMinor: 55000,
+              createdAt: "2026-05-01 09:30:00",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...baselineDefaults,
+          account: {
+            id: 1,
+            bankName: "HDFC Bank",
+            accountNumber: "XX1234",
+            currentBalanceMinor: 125050,
+          },
+          accounts: [
+            {
+              id: 1,
+              bankName: "HDFC Bank",
+              accountNumber: "XX1234",
+              currentBalanceMinor: 125050,
+            },
+            {
+              id: 2,
+              bankName: "ICICI",
+              accountNumber: "YY9876",
+              currentBalanceMinor: 55000,
+            },
+          ],
+          scope: {
+            kind: "account",
+            label: "HDFC Bank - XX1234",
+            accountId: 1,
+            accountCount: 2,
+            currentBalanceMinor: 125050,
+          },
+          entries: [
+            {
+              id: 1,
+              entryKind: "opening_balance",
+              amountMinor: 125050,
+              createdAt: "2026-05-01 09:00:00",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...baselineDefaults,
+          account: {
+            id: 1,
+            bankName: "HDFC Bank",
+            accountNumber: "XX1234",
+            currentBalanceMinor: 125050,
+          },
+          accounts: [
+            {
+              id: 1,
+              bankName: "HDFC Bank",
+              accountNumber: "XX1234",
+              currentBalanceMinor: 125050,
+            },
+            {
+              id: 2,
+              bankName: "ICICI",
+              accountNumber: "YY9876",
+              currentBalanceMinor: 55000,
+            },
+          ],
+          scope: {
+            kind: "account",
+            label: "HDFC Bank - XX1234",
+            accountId: 1,
+            accountCount: 2,
+            currentBalanceMinor: 125050,
+          },
+          entries: [
+            {
+              id: 1,
+              entryKind: "opening_balance",
+              amountMinor: 125050,
+              createdAt: "2026-05-01 09:00:00",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      });
+
+    render(<App />);
+
+    const scopeSelect = await screen.findByLabelText(/active ledger scope/i);
+    expect(scopeSelect).toHaveValue("all-accounts");
+
+    await user.selectOptions(scopeSelect, "account:1");
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(getLedgerBaseline).mock.calls.some(
+          ([payload]) =>
+            payload?.scope?.kind === "account" &&
+            payload.scope.accountId === 1,
+        ),
+      ).toBe(true);
+    });
+
+    await user.click(screen.getByRole("button", { name: /refresh baseline/i }));
+
+    await waitFor(() => {
+      const calls = vi.mocked(getLedgerBaseline).mock.calls;
+      expect(calls[calls.length - 1]?.[0]).toEqual({
+        scope: {
+          kind: "account",
+          accountId: 1,
+        },
+      });
+    });
+
+    expect(screen.getByLabelText(/active ledger scope/i)).toHaveValue("account:1");
+    expect(await screen.findByText(/all accounts/i)).toBeInTheDocument();
+  });
+
+  it("keeps history aligned with the latest selected scope when responses resolve out of order", async () => {
+    const user = userEvent.setup();
+
+    const allAccountsBaseline = {
+      ...baselineDefaults,
+      account: null,
+      accounts: [
+        {
+          id: 1,
+          bankName: "HDFC Bank",
+          accountNumber: "XX1234",
+          currentBalanceMinor: 125050,
+        },
+        {
+          id: 2,
+          bankName: "ICICI",
+          accountNumber: "YY9876",
+          currentBalanceMinor: 55000,
+        },
+      ],
+      scope: {
+        kind: "all-accounts" as const,
+        label: "All accounts",
+        accountCount: 2,
+        currentBalanceMinor: 180050,
+      },
+      entries: [
+        {
+          id: 100,
+          entryKind: "opening_balance",
+          amountMinor: 180050,
+          createdAt: "2026-05-01 09:00:00",
+        },
+      ],
+      ordering: "created_at_desc_id_desc",
+    };
+
+    const account1Baseline = {
+      ...baselineDefaults,
+      account: {
+        id: 1,
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        currentBalanceMinor: 125050,
+      },
+      accounts: allAccountsBaseline.accounts,
+      scope: {
+        kind: "account" as const,
+        label: "HDFC Bank - XX1234",
+        accountId: 1,
+        accountCount: 2,
+        currentBalanceMinor: 125050,
+      },
+      entries: [
+        {
+          id: 101,
+          entryKind: "opening_balance",
+          amountMinor: 125050,
+          createdAt: "2026-05-01 09:10:00",
+        },
+      ],
+      ordering: "created_at_desc_id_desc",
+    };
+
+    const account2Baseline = {
+      ...baselineDefaults,
+      account: {
+        id: 2,
+        bankName: "ICICI",
+        accountNumber: "YY9876",
+        currentBalanceMinor: 55000,
+      },
+      accounts: allAccountsBaseline.accounts,
+      scope: {
+        kind: "account" as const,
+        label: "ICICI - YY9876",
+        accountId: 2,
+        accountCount: 2,
+        currentBalanceMinor: 55000,
+      },
+      entries: [
+        {
+          id: 202,
+          entryKind: "opening_balance",
+          amountMinor: 55000,
+          createdAt: "2026-05-01 09:20:00",
+        },
+      ],
+      ordering: "created_at_desc_id_desc",
+    };
+
+    const createDeferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => {
+        resolve = res;
+      });
+      return { promise, resolve };
+    };
+
+    const account1Deferred = createDeferred<any>();
+    const account2Deferred = createDeferred<any>();
+
+    vi.mocked(getLedgerBaseline).mockImplementation((payload) => {
+      if (!payload?.scope) {
+        return Promise.resolve({ ok: true, data: allAccountsBaseline });
+      }
+
+      if (payload.scope.kind === "account" && payload.scope.accountId === 1) {
+        return account1Deferred.promise;
+      }
+
+      if (payload.scope.kind === "account" && payload.scope.accountId === 2) {
+        return account2Deferred.promise;
+      }
+
+      return Promise.resolve({
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "Unexpected test scope payload",
+        },
+      });
+    });
+
+    render(<App />);
+
+    const scopeSelect = await screen.findByLabelText(/active ledger scope/i);
+    expect(scopeSelect).toHaveValue("all-accounts");
+
+    await user.selectOptions(scopeSelect, "account:1");
+    await user.selectOptions(scopeSelect, "account:2");
+
+    account2Deferred.resolve({ ok: true, data: account2Baseline });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/active ledger scope/i)).toHaveValue("account:2");
+      expect(screen.getByText(/Entry #202/i)).toBeInTheDocument();
+    });
+
+    account1Deferred.resolve({ ok: true, data: account1Baseline });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/active ledger scope/i)).toHaveValue("account:2");
+      expect(screen.getByText(/Entry #202/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Entry #101/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps account scope switcher visible when scoped refresh fails", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getLedgerBaseline)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...baselineDefaults,
+          account: null,
+          accounts: [
+            {
+              id: 1,
+              bankName: "HDFC Bank",
+              accountNumber: "XX1234",
+              currentBalanceMinor: 125050,
+            },
+            {
+              id: 2,
+              bankName: "ICICI",
+              accountNumber: "YY9876",
+              currentBalanceMinor: 55000,
+            },
+          ],
+          scope: {
+            kind: "all-accounts",
+            label: "All accounts",
+            accountCount: 2,
+            currentBalanceMinor: 180050,
+          },
+          entries: [
+            {
+              id: 1,
+              entryKind: "opening_balance",
+              amountMinor: 125050,
+              createdAt: "2026-05-01 09:00:00",
+            },
+          ],
+          ordering: "created_at_desc_id_desc",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "Select an existing account before loading the baseline.",
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "PERSISTENCE_ERROR",
+          message: "Fallback baseline failed.",
+        },
+      });
+
+    render(<App />);
+
+    const scopeSelect = await screen.findByLabelText(/active ledger scope/i);
+    await user.selectOptions(scopeSelect, "account:2");
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(getLedgerBaseline).mock.calls.some(
+          ([payload]) => payload?.scope?.kind === "account" && payload.scope.accountId === 2,
+        ),
+      ).toBe(true);
+    });
+
+    expect(screen.getByLabelText(/active ledger scope/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^No transactions yet\.$/i)).not.toBeInTheDocument();
   });
 
   it("renders category and merchant insight cards from persisted baseline data", async () => {

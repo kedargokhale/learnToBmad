@@ -31,6 +31,23 @@ export type LedgerAccountData = {
   currentBalanceMinor: number;
 };
 
+export type LedgerScopeSelection =
+  | {
+      kind: "all-accounts";
+    }
+  | {
+      kind: "account";
+      accountId: number;
+    };
+
+export type LedgerScopeSummaryData = {
+  kind: "all-accounts" | "account";
+  label: string;
+  accountId?: number;
+  accountCount: number;
+  currentBalanceMinor: number;
+};
+
 export type LedgerCategoryInsightData = {
   categoryName: string;
   totalAmountMinor: number;
@@ -68,7 +85,7 @@ export type LedgerRunningBalanceData = {
   points: RunningBalancePointData[];
 };
 
-export type LedgerInsightCardKind = "category" | "merchant" | "trend";
+export type LedgerInsightCardKind = string;
 
 export type LedgerInsightCardEmptyStateData = {
   title: string;
@@ -89,7 +106,9 @@ export type LedgerInsightSummaryCardData = {
 };
 
 export type LedgerBaselineData = {
+  scope?: LedgerScopeSummaryData;
   account: LedgerAccountData | null;
+  accounts?: LedgerAccountData[];
   entries: LedgerEntryData[];
   categoryInsights?: LedgerCategoryInsightData[];
   merchantInsights?: LedgerMerchantInsightData[];
@@ -97,6 +116,10 @@ export type LedgerBaselineData = {
   runningBalance: LedgerRunningBalanceData;
   insightSummary?: LedgerInsightSummaryCardData[];
   ordering: string;
+};
+
+export type LedgerBaselineRequest = {
+  scope?: LedgerScopeSelection;
 };
 
 export type CommandError = {
@@ -126,8 +149,10 @@ export async function createLedgerAccount(
   });
 }
 
-export async function getLedgerBaseline(): Promise<CommandEnvelope<LedgerBaselineData>> {
-  return invoke<CommandEnvelope<LedgerBaselineData>>("get_ledger_baseline");
+export async function getLedgerBaseline(
+  payload?: LedgerBaselineRequest,
+): Promise<CommandEnvelope<LedgerBaselineData>> {
+  return invoke<CommandEnvelope<LedgerBaselineData>>("get_ledger_baseline", payload ? { payload } : undefined);
 }
 
 export async function updateCaptureTransactionCategory(payload: {

@@ -1,6 +1,6 @@
 # Story 3.9: Multi-Account Baseline Scope and Account Switcher
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -15,21 +15,21 @@ so that I can trust where my transactions are shown when multiple accounts exist
 
 ## Tasks / Subtasks
 
-- [ ] Introduce explicit baseline scope contract in backend and frontend (AC: 1, 2)
-  - [ ] Add scope metadata to baseline response (for example: all-accounts or account:<id>) so the UI can always render explicit context.
-  - [ ] Keep default baseline scope as all-accounts when multiple accounts exist.
-- [ ] Implement account-switcher/filter flow (AC: 2)
-  - [ ] Add account list retrieval and UI selection control for switching from all-accounts to a specific account.
-  - [ ] Ensure selected scope drives baseline/history/insight queries through one typed request path.
-- [ ] Preserve deterministic data behavior across scope changes (AC: 1, 2)
-  - [ ] Keep ordering guarantees for history and summaries when switching scopes repeatedly.
-  - [ ] Ensure failed/blocked saves do not trigger scope refresh side effects.
-- [ ] Keep read-model consistency for insight summary, trend, and running balance (AC: 1, 2)
-  - [ ] Ensure category, merchant, trend, and running-balance surfaces align with currently selected scope.
-  - [ ] Show clear scope labeling near baseline hero and/or insight region.
-- [ ] Add regression coverage for all-accounts default and filtered views (AC: 1, 2)
-  - [ ] Add Rust command tests for all-accounts aggregate default and account-filtered queries.
-  - [ ] Extend Vitest app/ledger tests to verify explicit scope labels, switching behavior, and deterministic refresh.
+- [x] Introduce explicit baseline scope contract in backend and frontend (AC: 1, 2)
+  - [x] Add scope metadata to baseline response (for example: all-accounts or account:<id>) so the UI can always render explicit context.
+  - [x] Keep default baseline scope as all-accounts when multiple accounts exist.
+- [x] Implement account-switcher/filter flow (AC: 2)
+  - [x] Add account list retrieval and UI selection control for switching from all-accounts to a specific account.
+  - [x] Ensure selected scope drives baseline/history/insight queries through one typed request path.
+- [x] Preserve deterministic data behavior across scope changes (AC: 1, 2)
+  - [x] Keep ordering guarantees for history and summaries when switching scopes repeatedly.
+  - [x] Ensure failed/blocked saves do not trigger scope refresh side effects.
+- [x] Keep read-model consistency for insight summary, trend, and running balance (AC: 1, 2)
+  - [x] Ensure category, merchant, trend, and running-balance surfaces align with currently selected scope.
+  - [x] Show clear scope labeling near baseline hero and/or insight region.
+- [x] Add regression coverage for all-accounts default and filtered views (AC: 1, 2)
+  - [x] Add Rust command tests for all-accounts aggregate default and account-filtered queries.
+  - [x] Extend Vitest app/ledger tests to verify explicit scope labels, switching behavior, and deterministic refresh.
 
 ## Dev Notes
 
@@ -184,8 +184,8 @@ Implication: implement scope corrections without regressing 3.7/3.8 behavior.
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Scoped ledger baseline, account switcher, and regression coverage implemented and validated.
 
 ## Dev Agent Record
 
@@ -200,6 +200,8 @@ GPT-5.3-Codex
 - Previous Story 3 implementation artifacts reviewed for guardrails and regression risks.
 - Current frontend and Rust ledger surfaces read to identify precise update boundaries.
 - Latest npm package versions checked on 2026-05-25.
+- Implemented scoped baseline contract, all-accounts default aggregation, account switcher UI, and scope-preserving refresh flow.
+- Validated with `cargo test`, `npm test -- --run src/features/ledger/ledger.test.tsx`, and `npm run build`.
 
 ### Completion Notes List
 
@@ -207,11 +209,23 @@ GPT-5.3-Codex
 - Added file-level preserve/change guidance for backend query scope and frontend scope-state wiring.
 - Embedded deterministic behavior and no-regression guardrails anchored to current code reality.
 - Included test strategy for both Rust and Vitest layers.
+- Delivered scoped ledger baseline data from Rust with all-accounts aggregation, explicit scope metadata, and filtered account reads.
+- Added frontend scope selection state, account switcher UI, and scope-preserving refresh/save behavior.
+- Added regression coverage for all-accounts default, filtered scope switching, and deterministic refresh.
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-9-multi-account-baseline-scope-and-account-switcher.md
+- app/src/App.css
+- app/src/App.tsx
+- app/src/features/ledger/components/AccountScopeSwitcher.tsx
+- app/src/features/ledger/components/LedgerBaselineView.tsx
+- app/src/features/ledger/ledger.test.tsx
+- app/src/features/ledger/schema.ts
+- app/src/features/ledger/service.ts
+- app/src-tauri/src/commands/ledger.rs
 
 ## Change Log
 
 - 2026-05-25: Created story context for 3.9 with multi-account baseline scope and account switcher guardrails.
+- 2026-05-26: Implemented scoped baseline contract, all-accounts default aggregation, account switcher UI, and regression tests; story moved to review.
