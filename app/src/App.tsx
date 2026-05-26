@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
 import { ReadinessStatus } from "./features/capture/components/ReadinessStatus";
@@ -34,7 +34,9 @@ import { LedgerBaselineView } from "./features/ledger/components/LedgerBaselineV
 import {
   getLedgerBaseline,
   updateCaptureTransactionCategory,
+  type LedgerAccountData,
   type LedgerBaselineData,
+  type LedgerScopeSelection,
 } from "./features/ledger/service";
 import "./App.css";
 
@@ -73,6 +75,57 @@ function getAccountSetupInitialValues(
   };
 }
 
+function getLedgerAccounts(baseline: LedgerBaselineData | null): LedgerAccountData[] {
+  if (!baseline) {
+    return [];
+  }
+
+  if (baseline.accounts?.length) {
+    return baseline.accounts;
+  }
+
+  return baseline.account ? [baseline.account] : [];
+}
+
+function resolveBaselineScopeSelection(baseline: LedgerBaselineData | null): LedgerScopeSelection | null {
+  if (!baseline) {
+    return null;
+  }
+
+  if (baseline.scope?.kind === "account" && baseline.scope.accountId) {
+    return {
+      kind: "account",
+      accountId: baseline.scope.accountId,
+    };
+  }
+
+  if (baseline.scope?.kind === "all-accounts") {
+    return { kind: "all-accounts" };
+  }
+
+  if (baseline.account) {
+    return {
+      kind: "account",
+      accountId: baseline.account.id,
+    };
+  }
+
+  return baseline.accounts?.length ? { kind: "all-accounts" } : null;
+}
+
+function resolveActiveAccount(baseline: LedgerBaselineData | null): LedgerAccountData | null {
+  if (!baseline) {
+    return null;
+  }
+
+  if (baseline.account) {
+    return baseline.account;
+  }
+
+  const accounts = getLedgerAccounts(baseline);
+  return accounts[0] ?? null;
+}
+
 function isMissingParsedAccountError(error: CommandError): boolean {
   if (error.code !== "VALIDATION_FAILED") {
     return false;
@@ -109,6 +162,8 @@ function App() {
 
   const [baseline, setBaseline] = useState<LedgerBaselineData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const baselineRef = useRef<LedgerBaselineData | null>(null);
+  const [selectedScope, setSelectedScope] = useState<LedgerScopeSelection | null>(null);
   const [parsePreview, setParsePreview] = useState<ParsePreviewData | null>(null);
   const [parseError, setParseError] = useState<CommandError | null>(null);
   const [saveError, setSaveError] = useState<CommandError | null>(null);
@@ -125,6 +180,7 @@ function App() {
   const [correctionMap, setCorrectionMap] = useState<
     Partial<Record<BlockedFieldReason["field"], string>>
   >({});
+  const baselineLoadRequestIdRef = useRef(0);
 
   const parsedPreview = parsePreviewSchema.safeParse(parsePreview);
   const normalizedPreview = parsedPreview.success ? parsedPreview.data : null;
@@ -141,10 +197,11 @@ function App() {
 
   const localParsedBank = correctedPreview?.bankName?.trim();
   const localParsedAccount = correctedPreview?.accountNumber?.trim();
-  const localSelectedBank = baseline?.account?.bankName?.trim();
-  const localSelectedAccount = baseline?.account?.accountNumber?.trim();
+  const activeAccount = resolveActiveAccount(baseline);
+  const localSelectedBank = activeAccount?.bankName?.trim();
+  const localSelectedAccount = activeAccount?.accountNumber?.trim();
   const localMismatchDetected = Boolean(
-    baseline?.account &&
+    activeAccount &&
       ((localParsedBank &&
         localSelectedBank &&
         normalizeCompareText(localParsedBank) !== normalizeCompareText(localSelectedBank)) ||
@@ -153,14 +210,14 @@ function App() {
           normalizeCompareText(localParsedAccount) !== normalizeCompareText(localSelectedAccount))),
   );
 
-  const preflightAccountMismatch = baseline?.account
+  const preflightAccountMismatch = activeAccount
     ? {
         detected: localMismatchDetected,
         requiresResolution: localMismatchDetected,
         parsedBankName: correctedPreview?.bankName ?? null,
         parsedAccountNumber: correctedPreview?.accountNumber ?? null,
-        selectedBankName: baseline.account.bankName,
-        selectedAccountNumber: baseline.account.accountNumber,
+        selectedBankName: activeAccount.bankName,
+        selectedAccountNumber: activeAccount.accountNumber,
       }
     : null;
   const requiresMismatchResolution = Boolean(
@@ -185,16 +242,46 @@ function App() {
   }).concat(decisionBlockedReasons);
   const hasCorrectionsApplied = Object.keys(correctionMap).length > 0;
 
-  const loadBaseline = useCallback(async (failOnError = false) => {
-    setIsLoading(true);
+  const loadBaseline = useCallback(async (scope?: LedgerScopeSelection | null, failOnError = false) => {
+    const requestId = baselineLoadRequestIdRef.current + 1;
+    baselineLoadRequestIdRef.current = requestId;
+    const isLatestRequest = () => baselineLoadRequestIdRef.current === requestId;
+    const showBlockingLoader = baselineRef.current === null;
+
+    if (showBlockingLoader) {
+      setIsLoading(true);
+    }
 
     try {
-      const result = await getLedgerBaseline();
+      const result = await getLedgerBaseline(scope ? { scope } : undefined);
+      if (!isLatestRequest()) {
+        return;
+      }
+
       if (!result.ok) {
+        // If a scoped request fails (stale scope/account), recover with default scope
+        // so account options remain visible and users can switch again.
+        if (scope) {
+          const fallback = await getLedgerBaseline();
+          if (!isLatestRequest()) {
+            return;
+          }
+
+          if (fallback.ok) {
+            setBaseline(fallback.data);
+            setSelectedScope(resolveBaselineScopeSelection(fallback.data));
+            return;
+          }
+
+          // Preserve the previous baseline if both scoped and fallback reads fail.
+          setSelectedScope((currentScope) => currentScope ?? null);
+          return;
+        }
+
         if (failOnError) {
           throw new Error("Failed to refresh ledger baseline from persisted data.");
         }
-        setBaseline({
+        setBaseline((currentBaseline) => currentBaseline ?? {
           account: null,
           entries: [],
           categoryInsights: [],
@@ -214,15 +301,21 @@ function App() {
           },
           ordering: "created_at_desc_id_desc",
         });
+        setSelectedScope((currentScope) => currentScope ?? null);
         return;
       }
 
       setBaseline(result.data);
+      setSelectedScope(resolveBaselineScopeSelection(result.data));
     } catch {
+      if (!isLatestRequest()) {
+        return;
+      }
+
       if (failOnError) {
         throw new Error("Failed to refresh ledger baseline from persisted data.");
       }
-      setBaseline({
+      setBaseline((currentBaseline) => currentBaseline ?? {
         account: null,
         entries: [],
         categoryInsights: [],
@@ -242,10 +335,17 @@ function App() {
         },
         ordering: "created_at_desc_id_desc",
       });
+      setSelectedScope((currentScope) => currentScope ?? null);
     } finally {
-      setIsLoading(false);
+      if (showBlockingLoader && isLatestRequest()) {
+        setIsLoading(false);
+      }
     }
   }, []);
+
+  useEffect(() => {
+    baselineRef.current = baseline;
+  }, [baseline]);
 
   const runSaveAttempt = useCallback(async () => {
     if (!correctedPreview || blockedFields.length > 0 || decisionBlockedReasons.length > 0) {
@@ -253,14 +353,14 @@ function App() {
       return;
     }
 
-    if (!baseline?.account && hasParsedAccountIdentity(correctedPreview)) {
+    if (!activeAccount && hasParsedAccountIdentity(correctedPreview)) {
       setAccountSetupInitialValues(getAccountSetupInitialValues(correctedPreview));
       setIsAccountSetupPromptOpen(true);
       setSaveLifecycleState("blocked");
       return;
     }
 
-    if (!baseline?.account) {
+    if (!activeAccount) {
       setSaveLifecycleState("blocked");
       return;
     }
@@ -274,9 +374,9 @@ function App() {
       setSaveLifecycleState("persisting");
       const result = await attemptTransactionSave({
         accountContext: {
-          accountId: baseline.account.id,
-          bankName: baseline.account.bankName,
-          accountNumber: baseline.account.accountNumber,
+          accountId: activeAccount.id,
+          bankName: activeAccount.bankName,
+          accountNumber: activeAccount.accountNumber,
         },
         parsedPayload: {
           ...correctedPreview,
@@ -306,7 +406,7 @@ function App() {
       setCaptureConfirmation("Transaction saved successfully. You can continue without dismissing this message.");
 
       if (result.data.acceptedForWrite) {
-        await loadBaseline(true);
+        await loadBaseline(selectedScope, true);
       }
 
       setSaveLifecycleState("success");
@@ -321,13 +421,14 @@ function App() {
       setIsSaving(false);
     }
   }, [
-    baseline,
+    activeAccount,
     blockedFields,
     correctedPreview,
     decisionBlockedReasons.length,
     duplicateDecision,
     loadBaseline,
     mismatchResolution,
+    selectedScope,
     selectedCategory,
   ]);
 
@@ -437,10 +538,15 @@ function App() {
         />
       </section>
 
-      {baseline?.account ? (
+      {getLedgerAccounts(baseline).length > 0 ? (
         <LedgerBaselineView
           baseline={baseline}
-          onRefresh={loadBaseline}
+          currentScope={selectedScope ?? resolveBaselineScopeSelection(baseline) ?? { kind: "all-accounts" }}
+          onScopeChange={(scope) => {
+            setSelectedScope(scope);
+            void loadBaseline(scope);
+          }}
+          onRefresh={() => loadBaseline(selectedScope)}
           onUpdateCategory={async (transactionId, finalCategory) => {
             try {
               const result = await updateCaptureTransactionCategory({
@@ -456,7 +562,7 @@ function App() {
 
               setSaveResult(null);
               setSaveLifecycleState("success");
-              await loadBaseline(true);
+              await loadBaseline(selectedScope, true);
             } catch {
               setSaveLifecycleState("failed");
               setSaveError({
@@ -478,7 +584,7 @@ function App() {
         <AccountSetupScreen
           initialValues={accountSetupInitialValues ?? undefined}
           onAccountCreated={async () => {
-            await loadBaseline();
+            await loadBaseline(selectedScope);
             setSaveError(null);
             setSaveResult(null);
             setSaveLifecycleState("idle");

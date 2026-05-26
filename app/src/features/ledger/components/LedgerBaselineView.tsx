@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { LedgerBaselineData } from "../service";
+import type {
+  LedgerAccountData,
+  LedgerBaselineData,
+  LedgerScopeSelection,
+  LedgerScopeSummaryData,
+} from "../service";
 import {
   CATEGORY_TAXONOMY,
   categoryLabel,
@@ -7,28 +12,42 @@ import {
 } from "../../categorization/schema";
 import { InsightSummary } from "../../dashboard/components/InsightSummary";
 import { RunningBalanceView } from "../../dashboard/components/RunningBalanceView";
+import { AccountScopeSwitcher } from "./AccountScopeSwitcher";
 
 type LedgerBaselineViewProps = {
-  baseline: LedgerBaselineData;
+  baseline: LedgerBaselineData | null;
+  currentScope: LedgerScopeSelection;
+  onScopeChange: (scope: LedgerScopeSelection) => void;
   onRefresh?: () => Promise<void>;
   onUpdateCategory?: (transactionId: number, finalCategory: CategoryCode) => Promise<void>;
 };
 
-export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: LedgerBaselineViewProps) {
-  const account = baseline.account;
+export function LedgerBaselineView({
+  baseline,
+  currentScope,
+  onScopeChange,
+  onRefresh,
+  onUpdateCategory,
+}: LedgerBaselineViewProps) {
+  if (!baseline) {
+    return null;
+  }
+
+  const accounts = baseline.accounts ?? (baseline.account ? [baseline.account] : []);
+  const scope = resolveScopeSummary(baseline, accounts);
   const runningBalance = baseline.runningBalance;
   const insightSummary = baseline.insightSummary ?? [];
   const [draftCategories, setDraftCategories] = useState<Record<number, CategoryCode>>({});
   const [updatingTransactionId, setUpdatingTransactionId] = useState<number | null>(null);
 
-  if (!account) {
+  if (accounts.length === 0) {
     return null;
   }
 
   return (
     <section className="ledger-screen">
       <div className="ledger-hero">
-        <span className="eyebrow">Ledger baseline</span>
+        <span className="eyebrow">{scope.label}</span>
         <h1>Current balance and ordered history from persisted local state.</h1>
         <p className="lede">
           This baseline confirms what is already stored on device before new captures are added.
@@ -39,15 +58,15 @@ export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: Le
           <li>
             <span className="point-icon">A</span>
             <div>
-              <strong>{account.bankName}</strong>
-              Account number: {account.accountNumber}
+              <strong>Scope</strong>
+              {scope.label}
             </div>
           </li>
           <li>
             <span className="point-icon">B</span>
             <div>
               <strong>Current balance</strong>
-              {formatMinorUnits(account.currentBalanceMinor)}
+              {formatMinorUnits(scope.currentBalanceMinor)}
             </div>
           </li>
           <li>
@@ -58,6 +77,13 @@ export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: Le
             </div>
           </li>
         </ul>
+
+        <AccountScopeSwitcher
+          accounts={accounts}
+          currentScope={currentScope}
+          scopeLabel={scope.label}
+          onScopeChange={onScopeChange}
+        />
       </div>
 
       <div className="ledger-card">
@@ -78,7 +104,7 @@ export function LedgerBaselineView({ baseline, onRefresh, onUpdateCategory }: Le
 
         {baseline.entries.length === 0 ? (
           <div className="empty-history" role="status">
-            No ledger entries are stored yet for this account.
+            No ledger entries are stored yet for this scope.
           </div>
         ) : (
           <ol className="history-list" aria-label="Ordered account transaction history">
@@ -162,3 +188,30 @@ function humanizeEntryKind(entryKind: string): string {
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
 }
+
+function resolveScopeSummary(
+  baseline: LedgerBaselineData,
+  accounts: LedgerAccountData[],
+): LedgerScopeSummaryData {
+  if (baseline.scope) {
+    return baseline.scope;
+  }
+
+  if (baseline.account) {
+    return {
+      kind: "account",
+      label: `${baseline.account.bankName} - ${baseline.account.accountNumber}`,
+      accountId: baseline.account.id,
+      accountCount: accounts.length || 1,
+      currentBalanceMinor: baseline.account.currentBalanceMinor,
+    };
+  }
+
+  return {
+    kind: "all-accounts",
+    label: "All accounts",
+    accountCount: accounts.length,
+    currentBalanceMinor: accounts.reduce((total, accountItem) => total + accountItem.currentBalanceMinor, 0),
+  };
+}
+

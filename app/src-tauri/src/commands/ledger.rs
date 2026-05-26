@@ -38,7 +38,7 @@ pub struct LedgerEntrySummary {
     pub category_source: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LedgerAccountSummary {
     pub id: i64,
@@ -50,7 +50,9 @@ pub struct LedgerAccountSummary {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LedgerBaselineResponse {
+    pub scope: LedgerScopeSummary,
     pub account: Option<LedgerAccountSummary>,
+    pub accounts: Vec<LedgerAccountSummary>,
     pub entries: Vec<LedgerEntrySummary>,
     pub category_insights: Vec<CategoryInsightSummary>,
     pub merchant_insights: Vec<MerchantInsightSummary>,
@@ -58,6 +60,32 @@ pub struct LedgerBaselineResponse {
     pub running_balance: RunningBalanceSummary,
     pub insight_summary: Vec<InsightSummaryCard>,
     pub ordering: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetLedgerBaselineRequest {
+    #[serde(default)]
+    pub scope: Option<LedgerScopeRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum LedgerScopeRequest {
+    #[serde(rename = "all-accounts")]
+    AllAccounts,
+    Account { account_id: i64 },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerScopeSummary {
+    pub kind: &'static str,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<i64>,
+    pub account_count: i64,
+    pub current_balance_minor: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -497,7 +525,9 @@ async fn update_capture_transaction_category_with_pool(
 mod tests {
     use super::{
         create_account_with_pool,
+        get_ledger_baseline_with_scope,
         get_ledger_baseline_with_pool,
+        LedgerBaselineScope,
         update_capture_transaction_category_with_pool,
         CreateAccountRequest,
         UpdateCaptureCategoryRequest,
@@ -610,7 +640,12 @@ mod tests {
         .await
         .expect("account creation should succeed");
 
-        let baseline = get_ledger_baseline_with_pool(&pool)
+        let baseline = get_ledger_baseline_with_scope(
+            &pool,
+            Some(LedgerBaselineScope::Account {
+                account_id: created.account_id,
+            }),
+        )
             .await
             .expect("baseline read should succeed");
 
@@ -639,6 +674,109 @@ mod tests {
         assert_eq!(baseline.trend_alert.window_preset, "30d");
         assert!(!baseline.trend_alert.is_alert);
         assert!(baseline.running_balance.points.is_empty());
+        assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn defaults_to_all_accounts_scope_when_multiple_accounts_exist() {
+        let pool = setup_pool().await;
+
+        let first_account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "HDFC".to_string(),
+                account_number: "1234".to_string(),
+                opening_balance_minor: 10_000,
+            },
+        )
+        .await
+        .expect("first account should be created");
+
+        let second_account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "ICICI".to_string(),
+                account_number: "9999".to_string(),
+                opening_balance_minor: 5_000,
+            },
+        )
+        .await
+        .expect("second account should be created");
+
+        sqlx::query("INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state, created_at) VALUES ($1, 'fp-1', 'raw', 'raw', 1_500, 'debit', '2026-05-01', 'HDFC', '1234', 'CityMall', 'shopping', 'shopping', 'suggested', 'none', 'none', 'persisted', '2026-05-01 10:00:00'), ($2, 'fp-2', 'raw', 'raw', 500, 'debit', '2026-05-02', 'ICICI', '9999', 'FuelHub', 'transport', 'transport', 'suggested', 'none', 'none', 'persisted', '2026-05-02 10:00:00')")
+            .bind(first_account.account_id)
+            .bind(second_account.account_id)
+            .execute(&pool)
+            .await
+            .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_pool(&pool)
+            .await
+            .expect("baseline read should succeed");
+
+        assert_eq!(baseline.scope.kind, "all-accounts");
+        assert_eq!(baseline.scope.account_id, None);
+        assert_eq!(baseline.scope.account_count, 2);
+        assert!(baseline.account.is_none());
+        assert_eq!(baseline.accounts.len(), 2);
+        assert_eq!(baseline.scope.current_balance_minor, 13_000);
+        assert_eq!(baseline.entries.len(), 4);
+        assert_eq!(baseline.category_insights.len(), 2);
+        assert_eq!(baseline.merchant_insights.len(), 2);
+        assert_eq!(baseline.ordering, "created_at_desc_id_desc");
+    }
+
+    #[tokio::test]
+    async fn filters_the_baseline_to_a_specific_account_scope() {
+        let pool = setup_pool().await;
+
+        let first_account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "Axis".to_string(),
+                account_number: "AB12".to_string(),
+                opening_balance_minor: 8_000,
+            },
+        )
+        .await
+        .expect("first account should be created");
+
+        let second_account = create_account_with_pool(
+            &pool,
+            CreateAccountRequest {
+                bank_name: "SBI".to_string(),
+                account_number: "CD34".to_string(),
+                opening_balance_minor: 12_000,
+            },
+        )
+        .await
+        .expect("second account should be created");
+
+        sqlx::query("INSERT INTO capture_transactions (account_id, transaction_fingerprint, raw_text, normalized_text, amount_minor, direction, transaction_date, bank_name, account_number, merchant_or_payee, suggested_category, final_category, category_source, mismatch_resolution, duplicate_decision, save_state, created_at) VALUES ($1, 'fp-1', 'raw', 'raw', 2_000, 'debit', '2026-05-01', 'Axis', 'AB12', 'Metro', 'transport', 'transport', 'suggested', 'none', 'none', 'persisted', '2026-05-01 10:00:00'), ($2, 'fp-2', 'raw', 'raw', 3_000, 'debit', '2026-05-02', 'SBI', 'CD34', 'Bazaar', 'groceries', 'groceries', 'suggested', 'none', 'none', 'persisted', '2026-05-02 10:00:00')")
+            .bind(first_account.account_id)
+            .bind(second_account.account_id)
+            .execute(&pool)
+            .await
+            .expect("capture transactions should insert");
+
+        let baseline = get_ledger_baseline_with_scope(
+            &pool,
+            Some(LedgerBaselineScope::Account {
+                account_id: first_account.account_id,
+            }),
+        )
+        .await
+        .expect("filtered baseline read should succeed");
+
+        assert_eq!(baseline.scope.kind, "account");
+        assert_eq!(baseline.scope.account_id, Some(first_account.account_id));
+        assert_eq!(baseline.scope.account_count, 2);
+        assert_eq!(baseline.account.as_ref().map(|account| account.id), Some(first_account.account_id));
+        assert_eq!(baseline.accounts.len(), 2);
+        assert_eq!(baseline.scope.current_balance_minor, 6_000);
+        assert_eq!(baseline.entries.len(), 2);
+        assert_eq!(baseline.category_insights.len(), 1);
+        assert_eq!(baseline.merchant_insights.len(), 1);
         assert_eq!(baseline.ordering, "created_at_desc_id_desc");
     }
 
@@ -761,7 +899,12 @@ mod tests {
         .await
         .expect("capture transactions should insert");
 
-        let baseline = get_ledger_baseline_with_pool(&pool)
+        let baseline = get_ledger_baseline_with_scope(
+            &pool,
+            Some(LedgerBaselineScope::Account {
+                account_id: account.account_id,
+            }),
+        )
             .await
             .expect("baseline read should succeed");
 
@@ -1070,9 +1213,17 @@ mod tests {
 }
 
 #[tauri::command]
-pub async fn get_ledger_baseline(app: AppHandle) -> CommandEnvelope<LedgerBaselineResponse> {
+pub async fn get_ledger_baseline(
+    app: AppHandle,
+    payload: Option<GetLedgerBaselineRequest>,
+) -> CommandEnvelope<LedgerBaselineResponse> {
     match ledger::sqlite_pool(&app).await {
-        Ok(pool) => match get_ledger_baseline_with_pool(&pool).await {
+        Ok(pool) => match get_ledger_baseline_with_scope(
+            &pool,
+            payload.and_then(|request| request.scope.map(LedgerBaselineScope::from_request)),
+        )
+        .await
+        {
             Ok(baseline) => CommandEnvelope {
                 ok: true,
                 data: Some(baseline),
@@ -1087,59 +1238,50 @@ pub async fn get_ledger_baseline(app: AppHandle) -> CommandEnvelope<LedgerBaseli
 pub(crate) async fn get_ledger_baseline_with_pool(
     pool: &Pool<Sqlite>,
 ) -> Result<LedgerBaselineResponse, CommandError> {
-    let account_row = sqlx::query(
-        "SELECT id, bank_name, account_number FROM accounts ORDER BY id ASC LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| CommandError::persistence(error.to_string()))?;
+    get_ledger_baseline_with_scope(pool, None).await
+}
 
-    let Some(account_row) = account_row else {
-        return Ok(LedgerBaselineResponse {
-            account: None,
-            entries: Vec::new(),
-            category_insights: Vec::new(),
-            merchant_insights: Vec::new(),
-            trend_alert: TrendAlertSummary {
-                window_preset: "30d",
-                current_spend_minor: 0,
-                baseline_spend_minor: 0,
-                delta_percent: 0.0,
-                threshold_percent: 20.0,
-                is_alert: false,
-                reason: "Not enough persisted debit history to compare trend windows."
-                    .to_string(),
-            },
-            running_balance: RunningBalanceSummary {
-                window_preset: "30d",
-                points: Vec::new(),
-            },
-            insight_summary: Vec::new(),
-            ordering: "created_at_desc_id_desc",
-        });
+pub(crate) async fn get_ledger_baseline_with_scope(
+    pool: &Pool<Sqlite>,
+    requested_scope: Option<LedgerBaselineScope>,
+) -> Result<LedgerBaselineResponse, CommandError> {
+    let accounts = load_account_summaries(pool).await?;
+
+    if accounts.is_empty() {
+        return Ok(empty_ledger_baseline_response());
+    }
+
+    let resolved_scope = resolve_ledger_baseline_scope(requested_scope, &accounts)?;
+    let scope_account_id = resolved_scope.account_id();
+
+    let current_balance_minor = match scope_account_id {
+        Some(account_id) => accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .map(|account| account.current_balance_minor)
+            .unwrap_or_default(),
+        None => accounts
+            .iter()
+            .map(|account| account.current_balance_minor)
+            .sum(),
     };
 
-    let account_id = account_row.get::<i64, _>("id");
-    let bank_name = account_row.get::<String, _>("bank_name");
-    let account_number = account_row.get::<String, _>("account_number");
+    let scope = LedgerScopeSummary {
+        kind: resolved_scope.kind(),
+        label: resolved_scope.label(&accounts),
+        account_id: scope_account_id,
+        account_count: accounts.len() as i64,
+        current_balance_minor,
+    };
 
-    let current_balance_minor = sqlx::query(
-        "SELECT COALESCE(SUM(amount_minor), 0) AS current_balance_minor FROM (SELECT amount_minor FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted')",
-    )
-    .bind(account_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| CommandError::persistence(error.to_string()))?
-    .get::<i64, _>("current_balance_minor");
+    let account = scope_account_id.and_then(|account_id| {
+        accounts
+            .iter()
+            .find(|item| item.id == account_id)
+            .cloned()
+    });
 
-    let entry_rows = sqlx::query(
-        "SELECT id, entry_kind, amount_minor, created_at, capture_transaction_id, final_category, category_source FROM (SELECT id, entry_kind, amount_minor, created_at, NULL AS capture_transaction_id, NULL AS final_category, NULL AS category_source FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor, created_at, id AS capture_transaction_id, final_category, category_source FROM capture_transactions WHERE account_id = $1) ORDER BY created_at DESC, id DESC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| CommandError::persistence(error.to_string()))?;
-
+    let entry_rows = scoped_entry_rows(pool, scope_account_id).await?;
     let entries = entry_rows
         .into_iter()
         .map(|row| LedgerEntrySummary {
@@ -1153,14 +1295,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         })
         .collect();
 
-    let category_rows = sqlx::query(
-        "SELECT final_category AS category_name, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit' GROUP BY final_category ORDER BY total_amount_minor DESC, category_name ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| CommandError::persistence(error.to_string()))?;
-
+    let category_rows = scoped_category_rows(pool, scope_account_id).await?;
     let total_debit_minor: i64 = category_rows
         .iter()
         .map(|row| row.get::<i64, _>("total_amount_minor"))
@@ -1185,14 +1320,7 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         })
         .collect();
 
-    let merchant_rows = sqlx::query(
-        "SELECT merchant_or_payee, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count, MAX(transaction_date) AS last_seen_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit' GROUP BY merchant_or_payee ORDER BY total_amount_minor DESC, transaction_count DESC, merchant_or_payee ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| CommandError::persistence(error.to_string()))?;
-
+    let merchant_rows = scoped_merchant_rows(pool, scope_account_id).await?;
     let merchant_insights: Vec<MerchantInsightSummary> = merchant_rows
         .into_iter()
         .map(|row| MerchantInsightSummary {
@@ -1203,8 +1331,8 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         })
         .collect();
 
-    let trend_alert = compute_trend_alert(pool, account_id).await?;
-    let running_balance = compute_running_balance(pool, account_id).await?;
+    let trend_alert = compute_trend_alert(pool, scope_account_id).await?;
+    let running_balance = compute_running_balance(pool, scope_account_id).await?;
     let insight_summary = build_insight_summary_cards(
         &category_insights,
         &merchant_insights,
@@ -1212,12 +1340,9 @@ pub(crate) async fn get_ledger_baseline_with_pool(
     );
 
     Ok(LedgerBaselineResponse {
-        account: Some(LedgerAccountSummary {
-            id: account_id,
-            bank_name,
-            account_number,
-            current_balance_minor,
-        }),
+        scope,
+        account,
+        accounts,
         entries,
         category_insights,
         merchant_insights,
@@ -1226,6 +1351,162 @@ pub(crate) async fn get_ledger_baseline_with_pool(
         insight_summary,
         ordering: "created_at_desc_id_desc",
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum LedgerBaselineScope {
+    AllAccounts,
+    Account { account_id: i64 },
+}
+
+impl LedgerBaselineScope {
+    fn from_request(request: LedgerScopeRequest) -> Self {
+        match request {
+            LedgerScopeRequest::AllAccounts => Self::AllAccounts,
+            LedgerScopeRequest::Account { account_id } => Self::Account { account_id },
+        }
+    }
+
+    fn account_id(self) -> Option<i64> {
+        match self {
+            Self::AllAccounts => None,
+            Self::Account { account_id } => Some(account_id),
+        }
+    }
+
+    fn kind(self) -> &'static str {
+        match self {
+            Self::AllAccounts => "all-accounts",
+            Self::Account { .. } => "account",
+        }
+    }
+
+    fn label(self, accounts: &[LedgerAccountSummary]) -> String {
+        match self {
+            Self::AllAccounts => "All accounts".to_string(),
+            Self::Account { account_id } => accounts
+                .iter()
+                .find(|account| account.id == account_id)
+                .map(|account| format!("{} - {}", account.bank_name, account.account_number))
+                .unwrap_or_else(|| "Selected account".to_string()),
+        }
+    }
+}
+
+fn resolve_ledger_baseline_scope(
+    requested_scope: Option<LedgerBaselineScope>,
+    accounts: &[LedgerAccountSummary],
+) -> Result<LedgerBaselineScope, CommandError> {
+    match requested_scope {
+        Some(LedgerBaselineScope::AllAccounts) => Ok(LedgerBaselineScope::AllAccounts),
+        Some(LedgerBaselineScope::Account { account_id }) => {
+            if accounts.iter().any(|account| account.id == account_id) {
+                Ok(LedgerBaselineScope::Account { account_id })
+            } else {
+                Err(CommandError::validation(
+                    "Select an existing account before loading the baseline.",
+                    "scope.accountId",
+                ))
+            }
+        }
+        None if accounts.len() > 1 => Ok(LedgerBaselineScope::AllAccounts),
+        None => Ok(LedgerBaselineScope::Account {
+            account_id: accounts[0].id,
+        }),
+    }
+}
+
+fn empty_ledger_baseline_response() -> LedgerBaselineResponse {
+    LedgerBaselineResponse {
+        scope: LedgerScopeSummary {
+            kind: "all-accounts",
+            label: "All accounts".to_string(),
+            account_id: None,
+            account_count: 0,
+            current_balance_minor: 0,
+        },
+        account: None,
+        accounts: Vec::new(),
+        entries: Vec::new(),
+        category_insights: Vec::new(),
+        merchant_insights: Vec::new(),
+        trend_alert: TrendAlertSummary {
+            window_preset: "30d",
+            current_spend_minor: 0,
+            baseline_spend_minor: 0,
+            delta_percent: 0.0,
+            threshold_percent: 20.0,
+            is_alert: false,
+            reason: "Not enough persisted debit history to compare trend windows."
+                .to_string(),
+        },
+        running_balance: RunningBalanceSummary {
+            window_preset: "30d",
+            points: Vec::new(),
+        },
+        insight_summary: Vec::new(),
+        ordering: "created_at_desc_id_desc",
+    }
+}
+
+async fn load_account_summaries(
+    pool: &Pool<Sqlite>,
+) -> Result<Vec<LedgerAccountSummary>, CommandError> {
+    let rows = sqlx::query(
+        "SELECT a.id, a.bank_name, a.account_number, COALESCE(ledger.balance_minor, 0) + COALESCE(capture.balance_minor, 0) AS current_balance_minor FROM accounts a LEFT JOIN (SELECT account_id, SUM(amount_minor) AS balance_minor FROM ledger_entries GROUP BY account_id) ledger ON ledger.account_id = a.id LEFT JOIN (SELECT account_id, SUM(CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END) AS balance_minor FROM capture_transactions WHERE save_state = 'persisted' GROUP BY account_id) capture ON capture.account_id = a.id ORDER BY a.id ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| LedgerAccountSummary {
+            id: row.get::<i64, _>("id"),
+            bank_name: row.get::<String, _>("bank_name"),
+            account_number: row.get::<String, _>("account_number"),
+            current_balance_minor: row.get::<i64, _>("current_balance_minor"),
+        })
+        .collect())
+}
+
+async fn scoped_entry_rows(
+    pool: &Pool<Sqlite>,
+    account_id: Option<i64>,
+) -> Result<Vec<sqlx::sqlite::SqliteRow>, CommandError> {
+    sqlx::query(
+        "SELECT id, entry_kind, amount_minor, created_at, capture_transaction_id, final_category, category_source FROM (SELECT id, entry_kind, amount_minor, created_at, NULL AS capture_transaction_id, NULL AS final_category, NULL AS category_source FROM ledger_entries WHERE ($1 IS NULL OR account_id = $1) UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS amount_minor, created_at, id AS capture_transaction_id, final_category, category_source FROM capture_transactions WHERE save_state = 'persisted' AND ($1 IS NULL OR account_id = $1)) ORDER BY created_at DESC, id DESC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))
+}
+
+async fn scoped_category_rows(
+    pool: &Pool<Sqlite>,
+    account_id: Option<i64>,
+) -> Result<Vec<sqlx::sqlite::SqliteRow>, CommandError> {
+    sqlx::query(
+        "SELECT final_category AS category_name, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count FROM capture_transactions WHERE save_state = 'persisted' AND direction = 'debit' AND ($1 IS NULL OR account_id = $1) GROUP BY final_category ORDER BY total_amount_minor DESC, category_name ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))
+}
+
+async fn scoped_merchant_rows(
+    pool: &Pool<Sqlite>,
+    account_id: Option<i64>,
+) -> Result<Vec<sqlx::sqlite::SqliteRow>, CommandError> {
+    sqlx::query(
+        "SELECT merchant_or_payee, SUM(amount_minor) AS total_amount_minor, COUNT(*) AS transaction_count, MAX(transaction_date) AS last_seen_date FROM capture_transactions WHERE save_state = 'persisted' AND direction = 'debit' AND ($1 IS NULL OR account_id = $1) GROUP BY merchant_or_payee ORDER BY total_amount_minor DESC, transaction_count DESC, merchant_or_payee ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| CommandError::persistence(error.to_string()))
 }
 
 fn build_insight_summary_cards(
@@ -1394,13 +1675,13 @@ fn humanize_category_name(raw: &str) -> String {
 
 async fn compute_trend_alert(
     pool: &Pool<Sqlite>,
-    account_id: i64,
+    account_id: Option<i64>,
 ) -> Result<TrendAlertSummary, CommandError> {
     const WINDOW_PRESET: &str = "30d";
     const THRESHOLD_PERCENT: f64 = 20.0;
 
     let row = sqlx::query(
-        "WITH latest AS (SELECT MAX(transaction_date) AS latest_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted' AND direction = 'debit'), windows AS (SELECT latest_date, date(latest_date, '-29 day') AS current_start, date(latest_date, '-59 day') AS baseline_start, date(latest_date, '-30 day') AS baseline_end FROM latest) SELECT COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.current_start AND windows.latest_date THEN ct.amount_minor ELSE 0 END), 0) AS current_spend_minor, COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.baseline_start AND windows.baseline_end THEN ct.amount_minor ELSE 0 END), 0) AS baseline_spend_minor, windows.latest_date AS latest_date FROM windows LEFT JOIN capture_transactions ct ON ct.account_id = $1 AND ct.save_state = 'persisted' AND ct.direction = 'debit'",
+        "WITH latest AS (SELECT MAX(transaction_date) AS latest_date FROM capture_transactions WHERE save_state = 'persisted' AND direction = 'debit' AND ($1 IS NULL OR account_id = $1)), windows AS (SELECT latest_date, date(latest_date, '-29 day') AS current_start, date(latest_date, '-59 day') AS baseline_start, date(latest_date, '-30 day') AS baseline_end FROM latest) SELECT COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.current_start AND windows.latest_date THEN ct.amount_minor ELSE 0 END), 0) AS current_spend_minor, COALESCE(SUM(CASE WHEN ct.transaction_date BETWEEN windows.baseline_start AND windows.baseline_end THEN ct.amount_minor ELSE 0 END), 0) AS baseline_spend_minor, windows.latest_date AS latest_date FROM windows LEFT JOIN capture_transactions ct ON ct.save_state = 'persisted' AND ct.direction = 'debit' AND ($1 IS NULL OR ct.account_id = $1)",
     )
     .bind(account_id)
     .fetch_one(pool)
@@ -1458,12 +1739,12 @@ async fn compute_trend_alert(
 
 async fn compute_running_balance(
     pool: &Pool<Sqlite>,
-    account_id: i64,
+    account_id: Option<i64>,
 ) -> Result<RunningBalanceSummary, CommandError> {
     const WINDOW_PRESET: &str = "30d";
 
     let event_rows = sqlx::query(
-        "SELECT id, entry_kind, delta_minor, event_date FROM (SELECT id, entry_kind, amount_minor AS delta_minor, date(created_at) AS event_date FROM ledger_entries WHERE account_id = $1 UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS delta_minor, transaction_date AS event_date FROM capture_transactions WHERE account_id = $1 AND save_state = 'persisted') ORDER BY event_date ASC, id ASC, entry_kind ASC",
+        "SELECT id, entry_kind, delta_minor, event_date FROM (SELECT id, entry_kind, amount_minor AS delta_minor, date(created_at) AS event_date FROM ledger_entries WHERE ($1 IS NULL OR account_id = $1) UNION ALL SELECT id, 'capture_transaction' AS entry_kind, CASE WHEN direction = 'debit' THEN -amount_minor ELSE amount_minor END AS delta_minor, transaction_date AS event_date FROM capture_transactions WHERE save_state = 'persisted' AND ($1 IS NULL OR account_id = $1)) ORDER BY event_date ASC, id ASC, entry_kind ASC",
     )
     .bind(account_id)
     .fetch_all(pool)

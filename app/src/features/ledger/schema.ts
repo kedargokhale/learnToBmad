@@ -32,6 +32,24 @@ export const ledgerAccountSchema = z.object({
   currentBalanceMinor: z.number().int().nonnegative(),
 });
 
+export const ledgerScopeSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("all-accounts"),
+  }),
+  z.object({
+    kind: z.literal("account"),
+    accountId: z.number().int().positive(),
+  }),
+]);
+
+export const ledgerScopeSummarySchema = z.object({
+  kind: z.enum(["all-accounts", "account"]),
+  label: z.string().min(1),
+  accountId: z.number().int().positive().optional(),
+  accountCount: z.number().int().nonnegative(),
+  currentBalanceMinor: z.number().int(),
+});
+
 export const categoryInsightSchema = z.object({
   categoryName: z.string().min(1),
   totalAmountMinor: z.number().int(),
@@ -90,7 +108,9 @@ export const insightSummaryCardSchema = z.object({
 });
 
 export const ledgerBaselineSchema = z.object({
+  scope: ledgerScopeSummarySchema.optional(),
   account: ledgerAccountSchema.nullable(),
+  accounts: z.array(ledgerAccountSchema).default([]),
   entries: z.array(ledgerEntrySchema),
   categoryInsights: z.array(categoryInsightSchema).default([]),
   merchantInsights: z.array(merchantInsightSchema).default([]),

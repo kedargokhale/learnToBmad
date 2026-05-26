@@ -199,6 +199,35 @@ select {
   margin-bottom: 2px;
 }
 
+.scope-switcher {
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(20, 33, 61, 0.08);
+  background: rgba(237, 243, 255, 0.52);
+}
+
+.scope-switcher-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.scope-switcher-copy strong {
+  color: #14213d;
+  font-size: 1.05rem;
+}
+
+.scope-switcher-copy p {
+  margin: 0;
+  color: #52627f;
+}
+
+.scope-switcher-control {
+  max-width: 360px;
+}
+
 .point-icon {
   width: 32px;
   height: 32px;
