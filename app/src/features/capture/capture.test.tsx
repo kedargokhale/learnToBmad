@@ -378,7 +378,38 @@ describe("Capture parse UX", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/not supported for safe parsing/i);
     expect(screen.getByText(/guided next action/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run save validation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+  });
+
+  it("uses concise save labeling and avoids duplicate save-guidance copy", async () => {
+    const user = userEvent.setup();
+    const parseMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        rawText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        normalizedText: "HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.",
+        amountMinor: 125050,
+        direction: "debit",
+        transactionDate: "2026-05-01",
+        bankName: "HDFC Bank",
+        accountNumber: "XX1234",
+        merchantOrPayee: "BigBazaar",
+        suggestedCategory: "other",
+        finalCategory: "other",
+        categorySource: "suggested",
+        readinessState: "ready",
+      },
+    });
+
+    render(<CaptureHarness parseMessage={parseMessage} saveAttempt={vi.fn()} />);
+
+    await user.click(screen.getByLabelText(/bank message/i));
+    await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
+
+    expect(await screen.findByRole("button", { name: /^save$/i })).toBeEnabled();
+    expect(screen.queryByText(/run save validation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/save validation gate is available/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/parse results update readiness immediately/i)).not.toBeInTheDocument();
   });
 
   it("renders the same readiness result when pasting identical text twice", async () => {
@@ -524,7 +555,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("debited INR 1250.50 on 2026-05-01");
 
-    const saveButton = screen.getByRole("button", { name: /run save validation/i });
+    const saveButton = screen.getByRole("button", { name: /^save$/i });
     expect(saveButton).toBeDisabled();
     expect(await screen.findByText(/save blocked until all critical fields are valid/i)).toBeInTheDocument();
     expect(screen.getAllByText(/bank: missing/i).length).toBeGreaterThan(0);
@@ -590,7 +621,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("debited INR 1250.50 on 2026-05-01");
 
-    const saveButton = screen.getByRole("button", { name: /run save validation/i });
+    const saveButton = screen.getByRole("button", { name: /^save$/i });
     expect(saveButton).toBeDisabled();
     expect(screen.getByRole("list", { name: /current blocked field list/i }).querySelectorAll("li")).toHaveLength(3);
 
@@ -650,7 +681,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("debited INR 1250.50 on 2026-05-01");
 
-    const saveButton = screen.getByRole("button", { name: /run save validation/i });
+    const saveButton = screen.getByRole("button", { name: /^save$/i });
     expect(saveButton).toBeDisabled();
     await user.click(saveButton);
     expect(saveAttempt).not.toHaveBeenCalled();
@@ -713,7 +744,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at ambiguous merchant.");
 
-    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    const saveButton = await screen.findByRole("button", { name: /^save$/i });
     expect(saveButton).toBeEnabled();
 
     await user.click(saveButton);
@@ -791,7 +822,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("sample");
 
-    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    const saveButton = await screen.findByRole("button", { name: /^save$/i });
     expect(saveButton).toBeEnabled();
     await user.click(saveButton);
 
@@ -872,7 +903,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("duplicate");
 
-    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    const saveButton = await screen.findByRole("button", { name: /^save$/i });
     await user.click(saveButton);
 
     expect((await screen.findAllByText(/possible duplicate detected/i)).length).toBeGreaterThan(0);
@@ -944,7 +975,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("duplicate mismatch");
 
-    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    const saveButton = await screen.findByRole("button", { name: /^save$/i });
     await user.click(saveButton);
 
     expect((await screen.findAllByText(/account mismatch detected/i)).length).toBeGreaterThan(0);
@@ -1003,7 +1034,7 @@ describe("Capture parse UX", () => {
 
     await user.selectOptions(screen.getByLabelText(/category before save/i), "shopping");
 
-    const saveButton = await screen.findByRole("button", { name: /run save validation/i });
+    const saveButton = await screen.findByRole("button", { name: /^save$/i });
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -1065,7 +1096,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("duplicate semantic");
 
-    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByText(/state: duplicate flagged/i)).toBeInTheDocument();
     expect(screen.getByText(/explicit duplicate decision required/i)).toBeInTheDocument();
@@ -1120,7 +1151,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("mismatch semantic");
 
-    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByText(/state: blocked by validation gates/i)).toBeInTheDocument();
     expect(screen.getByText(/resolve blocked fields or account mismatch decisions/i)).toBeInTheDocument();
@@ -1162,7 +1193,7 @@ describe("Capture parse UX", () => {
     await user.type(screen.getByLabelText(/^merchant\/payee$/i), "BigBazaar");
     await user.keyboard("{Enter}");
 
-    const saveButton = screen.getByRole("button", { name: /run save validation/i });
+    const saveButton = screen.getByRole("button", { name: /^save$/i });
     await waitFor(() => {
       expect(saveButton).toBeEnabled();
     });
@@ -1232,7 +1263,7 @@ describe("Capture parse UX", () => {
     await user.click(screen.getByRole("button", { name: /apply corrections/i }));
 
     expect(await screen.findByRole("status", { name: /capture confirmation/i })).toHaveTextContent(/corrections updated/i);
-    expect(screen.getByRole("button", { name: /run save validation/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeEnabled();
   });
 });
 
@@ -1292,5 +1323,6 @@ describe("Capture confirmation toast lifecycle", () => {
     vi.useRealTimers();
   });
 });
+
 
 

@@ -403,7 +403,7 @@ function App() {
       }
 
       setSaveResult(result.data);
-      setCaptureConfirmation("Transaction saved successfully. You can continue without dismissing this message.");
+      setCaptureConfirmation("Saved successfully. Continue capturing.");
 
       if (result.data.acceptedForWrite) {
         await loadBaseline(selectedScope, true);

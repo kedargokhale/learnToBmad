@@ -1,6 +1,6 @@
 # Story 3.10: Capture Surface Declutter and Primary Action Simplification
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -15,21 +15,21 @@ so that I can complete parse-to-save flow without cognitive overload.
 
 ## Tasks / Subtasks
 
-- [ ] Simplify capture action hierarchy and labels (AC: 1)
-  - [ ] Change primary save action label to Save and align aria/accessibility text accordingly.
-  - [ ] Keep parse affordance clear while reducing duplicate explanatory phrasing.
-- [ ] Declutter repeated copy across capture/readiness surfaces (AC: 1, 2)
-  - [ ] Consolidate overlapping guidance between TransactionInput and ReadinessStatus.
-  - [ ] Keep one clear next-safe-action message in blocked or failed states.
-- [ ] Preserve deterministic validation and gating semantics (AC: 2)
-  - [ ] Ensure button labeling changes do not alter validate-first and gate-before-write behavior.
-  - [ ] Keep mismatch-resolution and duplicate-decision requirements explicit and visible.
-- [ ] Tune visual hierarchy for next actions (AC: 2)
-  - [ ] Promote immediate next action controls over long instructional paragraphs.
-  - [ ] Keep progressive disclosure behavior (compact default, detail on demand).
-- [ ] Add regression and accessibility coverage (AC: 1, 2)
-  - [ ] Extend capture tests for Save label, reduced duplicate copy, and explicit blocked reasons.
-  - [ ] Verify keyboard-first flow and live-region confirmations still behave as intended.
+- [x] Simplify capture action hierarchy and labels (AC: 1)
+  - [x] Change primary save action label to Save and align aria/accessibility text accordingly.
+  - [x] Keep parse affordance clear while reducing duplicate explanatory phrasing.
+- [x] Declutter repeated copy across capture/readiness surfaces (AC: 1, 2)
+  - [x] Consolidate overlapping guidance between TransactionInput and ReadinessStatus.
+  - [x] Keep one clear next-safe-action message in blocked or failed states.
+- [x] Preserve deterministic validation and gating semantics (AC: 2)
+  - [x] Ensure button labeling changes do not alter validate-first and gate-before-write behavior.
+  - [x] Keep mismatch-resolution and duplicate-decision requirements explicit and visible.
+- [x] Tune visual hierarchy for next actions (AC: 2)
+  - [x] Promote immediate next action controls over long instructional paragraphs.
+  - [x] Keep progressive disclosure behavior (compact default, detail on demand).
+- [x] Add regression and accessibility coverage (AC: 1, 2)
+  - [x] Extend capture tests for Save label, reduced duplicate copy, and explicit blocked reasons.
+  - [x] Verify keyboard-first flow and live-region confirmations still behave as intended.
 
 ## Dev Notes
 
@@ -181,8 +181,8 @@ Implication: declutter changes should be copy and hierarchy focused with strong 
 
 ## Story Completion Status
 
-- Status set to: ready-for-dev
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to: review
+- Completion note: Story implementation completed with Save label simplification, capture/readiness copy declutter, and full regression verification.
 
 ## Dev Agent Record
 
@@ -197,6 +197,11 @@ GPT-5.3-Codex
 - Story 3.5 and 3.8 artifacts reviewed for prior learnings and regression guardrails.
 - Current capture component code and tests read to map exact update boundaries.
 - Latest npm package versions checked on 2026-05-25.
+- Workflow resolved through _bmad/scripts/resolve_customization.py for bmad-dev-story workflow activation.
+- Updated sprint status to in-progress at start, then review after completion.
+- Red phase: updated capture tests to require concise Save label and no duplicate save-guidance copy; confirmed failures before implementation.
+- Green/refactor phase: updated capture UI copy and hierarchy while preserving blocked reasons and decision gates.
+- Full validations executed: pnpm test (53/53 passing) and pnpm build (successful).
 
 ### Completion Notes List
 
@@ -204,11 +209,23 @@ GPT-5.3-Codex
 - Documented exact capture files to update and preservation constraints.
 - Embedded explicit anti-regression rules for mismatch/duplicate gates and keyboard/accessibility behavior.
 - Added focused test guidance to validate copy/hierarchy changes without behavior drift.
+- Implemented Save as the primary capture action with aligned aria labeling and preserved disable/gating semantics.
+- Reduced duplicate validation prose in capture/readiness surfaces while keeping explicit blocked reasons and next-safe-action language.
+- Kept progressive disclosure behavior intact and tuned action prominence by de-emphasizing long instruction caption text.
+- Added/updated regression coverage in capture and ledger suites for Save label and updated confirmation copy.
 
 ### File List
 
 - _bmad-output/implementation-artifacts/3-10-capture-surface-declutter-and-primary-action-simplification.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- app/src/features/capture/components/TransactionInput.tsx
+- app/src/features/capture/components/ReadinessStatus.tsx
+- app/src/App.tsx
+- app/src/App.css
+- app/src/features/capture/capture.test.tsx
+- app/src/features/ledger/ledger.test.tsx
 
 ## Change Log
 
 - 2026-05-25: Created story context for 3.10 with capture-surface declutter and primary-action simplification guardrails.
+- 2026-05-26: Implemented story 3.10 - Save primary action label, capture/readiness copy declutter, visual hierarchy tuning, and regression updates with full test/build validation.

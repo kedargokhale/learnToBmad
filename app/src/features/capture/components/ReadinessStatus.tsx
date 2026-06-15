@@ -237,8 +237,8 @@ export function ReadinessStatus({
         <div className="readiness-summary-row">
           <div className="hint">
             {detailsIssueTriggered
-              ? "Detailed guidance is expanded because there are issues to resolve."
-              : "Everything looks ready. Parsed field details stay hidden unless you ask for them."}
+              ? "Issues need decisions. Expanded details show the next safe action."
+              : "Ready to save. Parsed details stay hidden unless you open them."}
           </div>
           <button
             ref={detailsToggleRef}
@@ -293,7 +293,7 @@ export function ReadinessStatus({
 
       {viewModel.readinessState !== "ready" ? (
         <div className="blocked-reasons">
-          A few details still need review before save can continue. Open guided corrections to fix only the blocked fields.
+          A few details still need review before save. Open guided corrections to fix only the blocked fields.
           {blockedFields.length > 0 ? (
             <ul aria-label="Current blocked field list">
               {blockedFields.map((item) => (

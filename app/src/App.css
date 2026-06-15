@@ -568,7 +568,8 @@ select {
 
 .submit-caption {
   color: #52627f;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  flex-basis: 100%;
 }
 
 .success-metadata {

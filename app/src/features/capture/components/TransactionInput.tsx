@@ -84,7 +84,7 @@ export function TransactionInput({
     <section className="ledger-card capture-card">
       <h2>Paste-to-parse capture</h2>
       <p className="section-copy">
-        Paste a full bank message to extract critical fields locally. The save flow still validates first, then persists the transaction and audit trail only after the gates pass.
+        Paste a full bank message to extract critical fields locally before saving.
       </p>
 
       <div className="field">
@@ -109,7 +109,7 @@ export function TransactionInput({
 
       <div className="submit-row">
         <button
-          className="primary-action"
+          className="secondary-action"
           type="button"
           disabled={isParsing}
           onClick={() => {
@@ -119,10 +119,11 @@ export function TransactionInput({
           {isParsing ? "Parsing message..." : "Parse message"}
         </button>
         <button
-          className="secondary-action"
+          className="primary-action"
           type="button"
           disabled={isSaving || saveBlockedReasons.length > 0}
           aria-disabled={isSaving || saveBlockedReasons.length > 0}
+          aria-label={isSaving ? "Validating save" : "Save"}
           onClick={() => {
             if (!onAttemptSave || saveBlockedReasons.length > 0 || isSaving) {
               return;
@@ -131,9 +132,9 @@ export function TransactionInput({
             void onAttemptSave();
           }}
         >
-          {isSaving ? "Validating save..." : "Run save validation"}
+          {isSaving ? "Validating save..." : "Save"}
         </button>
-        <div className="submit-caption">Parse results update readiness immediately without mutating local ledger data. Save validation runs before persistence, and the baseline refreshes only after a committed write.</div>
+        <div className="submit-caption">Save validates first, then writes transaction and audit records together.</div>
       </div>
 
       {saveBlockedReasons.length > 0 ? (
@@ -146,7 +147,7 @@ export function TransactionInput({
           </ul>
         </div>
       ) : (
-        <div className="hint">Save validation gate is available. Use Run save validation to validate first and persist only when the flow is ready.</div>
+        <div className="hint">Save is available. Validation still runs before any write.</div>
       )}
     </section>
   );

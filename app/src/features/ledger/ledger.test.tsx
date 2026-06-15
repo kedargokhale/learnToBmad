@@ -990,7 +990,7 @@ describe("Ledger baseline app flow", () => {
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
-    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByRole("heading", { name: /account confirmation/i })).toBeInTheDocument();
     expect(screen.queryByText(/first-run ledger setup/i)).not.toBeInTheDocument();
@@ -1065,7 +1065,7 @@ describe("Ledger baseline app flow", () => {
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at BigBazaar.");
-    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(attemptTransactionSave).toHaveBeenCalledTimes(1);
@@ -1173,7 +1173,7 @@ describe("Ledger baseline app flow", () => {
     await user.click(await screen.findByLabelText(/bank message/i));
     await user.paste("Sent Rs.100.00 From HDFC Bank A/C *1234 To Axis Bank On 2026-05-13");
     await user.click(await screen.findByLabelText(/treat parsed account as intended and continue validation/i));
-    await user.click(screen.getByRole("button", { name: /run save validation/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByRole("heading", { name: /account confirmation/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/bank name/i)).toHaveValue("HDFC Bank");
@@ -1194,7 +1194,7 @@ describe("Ledger baseline app flow", () => {
       expect(screen.queryByRole("heading", { name: /account confirmation/i })).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /run save validation/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(attemptTransactionSave).toHaveBeenCalledTimes(2);
@@ -1371,7 +1371,7 @@ describe("Ledger baseline app flow", () => {
 
     await user.click(screen.getByLabelText(/bank message/i));
     await user.paste("HDFC Bank Alert: A/c XX1234 debited by INR 1,250.50 on 2026-05-01 at CityMall.");
-    await user.click(await screen.findByRole("button", { name: /run save validation/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(getLedgerBaseline).toHaveBeenCalled();
@@ -1379,7 +1379,7 @@ describe("Ledger baseline app flow", () => {
     const merchantCard = await screen.findByRole("article", { name: /merchant story/i });
     expect(within(merchantCard).getByText(/citymall/i)).toBeInTheDocument();
     expect(screen.queryByText(/oldmerchant/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("status", { name: /capture confirmation/i })).toHaveTextContent(/transaction saved successfully/i);
+    expect(screen.getByRole("status", { name: /capture confirmation/i })).toHaveTextContent(/saved successfully\. continue capturing\./i);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
