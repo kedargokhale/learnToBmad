@@ -1,0 +1,13 @@
+Start app from VSCode
+d:\learnToBmad\app
+pnpm tauri dev
+
+
+Create an installable file
+d:\learnToBmad\app
+pnpm tauri build
+
+
+Clear app data
+C:\Users\[YourUsername]\AppData\Local\com.kedarg.app\data\
+Delete ledger.db
